@@ -16,9 +16,9 @@ if (window.decomp) Common.setDecomp(window.decomp);
 
 const CONFIG = Object.freeze({
   boardWidth: 960,
-  boardHeight: 1160,
+  boardHeight: 1500,
   launchAreaHeight: 120,
-  bottomZoneTop: 1010,
+  bottomZoneTop: 1340,
   wallThickness: 48,
   pegRadius: 10,
   shakeCooldownMs: 1200,
@@ -39,6 +39,9 @@ const CONFIG = Object.freeze({
 
 const STARTING_LOADOUT = Object.freeze([
   "wood_sword",
+  "wood_sword",
+  "wood_sword",
+  "wood_shield",
   "wood_shield",
   "hp_potion"
 ]);
@@ -166,6 +169,7 @@ function createRun(isTestMode = false) {
 
   return {
     version: Storage.SAVE_VERSION,
+    loadoutVersion: 2,
     id: createId("run"),
     isTestMode,
     phase: "combat",
@@ -245,12 +249,13 @@ function beginNewRun(isTestMode = false) {
 }
 
 function continueSavedRun() {
-  const saved = Storage.load();
-  if (!saved) {
+  const loaded = Storage.load();
+  if (!loaded) {
     refreshMenu();
     return;
   }
 
+  const saved = migrateLoadedRun(loaded);
   gameState.run = saved;
   showGame();
 
@@ -270,6 +275,30 @@ function continueSavedRun() {
   }
 
   restoreCombatSnapshot(saved.combatSnapshot);
+}
+
+
+function migrateLoadedRun(run) {
+  // Durante el prototipo, una partida de la ronda 1 que aún conserve
+  // exactamente el antiguo kit 1/1/1 recibe el nuevo kit inicial 3/2/1.
+  // No alteramos runs avanzadas ni inventarios que ya hayan cambiado.
+  if (run.loadoutVersion !== 2) {
+    const ids = (run.inventory || []).map(instance => instance.itemId).sort();
+    const oldStartingKit = ["hp_potion", "wood_shield", "wood_sword"];
+    const isUntouchedOpening = !run.isTestMode && run.round === 1 && run.gold === 0 &&
+      ids.length === oldStartingKit.length && ids.every((id, index) => id === oldStartingKit[index]);
+
+    if (isUntouchedOpening) {
+      run.inventory.push(
+        createInventoryInstance("wood_sword"),
+        createInventoryInstance("wood_sword"),
+        createInventoryInstance("wood_shield")
+      );
+    }
+    run.loadoutVersion = 2;
+    Storage.save(run);
+  }
+  return run;
 }
 
 function startCombat() {
@@ -302,13 +331,13 @@ function restoreCombatSnapshot(snapshot) {
   gameState.turn = "player";
   gameState.combatOver = false;
   resetTurnPool();
-  const restoredBoard = snapshot.board?.version === 2
+  const restoredBoard = snapshot.board?.version === 3
     ? clone(snapshot.board)
     : generateBoardConfiguration(run.round);
   createBoard(restoredBoard);
-  addLog(snapshot.board?.version === 2
+  addLog(snapshot.board?.version === 3
     ? "Partida retomada al inicio del último turno guardado."
-    : "Partida retomada con el nuevo diseño de tablero.");
+    : "Partida retomada con el tablero profundo actualizado.");
   updateUi();
 }
 
@@ -325,7 +354,7 @@ function saveSafePoint() {
     }))),
     enemies: clone(gameState.enemies),
     board: {
-      version: 2,
+      version: 3,
       slots: clone(gameState.slots),
       hazards: gameState.hazardBodies.map(body => clone(body.plugin.pachinkrawlerHazard.layout))
     }
@@ -395,10 +424,10 @@ function generateBoardConfiguration(round) {
   // Los peligros ocupan nodos reales del patrón en vez de superponerse
   // a una parrilla completa. Así quedan rutas legibles y se evitan
   // pinzas imposibles entre un peligro y un clavo situado debajo.
-  const hazardCount = Math.min(4, 2 + Math.floor((round - 1) / 3));
+  const hazardCount = Math.min(8, 5 + Math.floor((round - 1) / 2));
   const candidates = shuffle(createPegLayout().filter(peg => (
-    peg.row >= 2 &&
-    peg.row <= 7 &&
+    peg.row >= 1 &&
+    peg.row <= 9 &&
     peg.x > 110 &&
     peg.x < CONFIG.boardWidth - 110
   )));
@@ -408,7 +437,7 @@ function generateBoardConfiguration(round) {
   for (const candidate of candidates) {
     if (hazards.length >= hazardCount) break;
     const farEnough = hazards.every(hazard => (
-      Math.hypot(hazard.x - candidate.x, hazard.y - candidate.y) >= 155
+      Math.hypot(hazard.x - candidate.x, hazard.y - candidate.y) >= 142
     ));
     if (!farEnough) continue;
 
@@ -421,7 +450,7 @@ function generateBoardConfiguration(round) {
     });
   }
 
-  return { version: 2, slots, hazards };
+  return { version: 3, slots, hazards };
 }
 
 function createBoard(boardConfig) {
@@ -473,14 +502,17 @@ function createPegLayout() {
     [0, 2, 3, 5, 7],
     [0, 1, 2, 3, 4, 5, 6, 7],
     [0, 1, 3, 4, 6, 7],
-    [0, 1, 2, 3, 4, 5, 6, 7],
+    [0, 1, 2, 4, 5, 7],
     [0, 2, 3, 5, 6],
     [0, 1, 2, 3, 4, 5, 6, 7],
+    [0, 1, 3, 4, 6, 7],
+    [0, 2, 3, 5, 7],
+    [0, 1, 2, 4, 5, 6, 7],
     [0, 1, 3, 4, 6, 7]
   ];
   const layout = [];
   const spacingX = 112;
-  const spacingY = 104;
+  const spacingY = 103;
   const startX = 88;
   const startY = 190;
 
@@ -527,8 +559,8 @@ function createLowerGuides() {
     label: "board-guide",
     render: { fillStyle: CONFIG.colors.bumper, strokeStyle: "#80809c", lineWidth: 2 }
   };
-  const left = Bodies.rectangle(92, 960, 150, 18, options);
-  const right = Bodies.rectangle(CONFIG.boardWidth - 92, 960, 150, 18, options);
+  const left = Bodies.rectangle(92, 1282, 150, 18, options);
+  const right = Bodies.rectangle(CONFIG.boardWidth - 92, 1282, 150, 18, options);
   Body.setAngle(left, 0.34);
   Body.setAngle(right, -0.34);
   return [left, right];
@@ -588,7 +620,13 @@ function createHazardBody(layout) {
 }
 
 function resetTurnPool() {
+  // La durabilidad es un recurso del turno, no de todo el combate.
+  // Al comenzar un nuevo turno cada instancia vuelve a su valor base,
+  // incluso si quedó rota durante el turno anterior.
   for (const instance of gameState.run.inventory) {
+    const definition = itemDefinitions.get(instance.itemId);
+    instance.currentDurability = definition?.durability ?? instance.currentDurability ?? 1;
+    instance.broken = false;
     instance.usedThisTurn = false;
   }
   selectRandomRemainingItem();
@@ -753,7 +791,7 @@ function damageItemFromHazard(item, hazardBody) {
     instance.broken = true;
     data.resolved = true;
     removeItem(root, false);
-    addLog(`${definition.name} se rompió al tocar ${hazardDefinition.name}. Volverá al terminar el combate.`);
+    addLog(`${definition.name} se rompió al tocar ${hazardDefinition.name}. Volverá con durabilidad completa en tu próximo turno.`);
   } else {
     addLog(`${hazardDefinition.name} dañó ${definition.name}: ${instance.currentDurability}/${definition.durability} de durabilidad.`);
     Sleeping.set(root, false);
