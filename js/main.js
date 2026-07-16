@@ -262,6 +262,10 @@ function continueSavedRun() {
   showGame();
 
   if (saved.phase === "transition") {
+    // Las partidas guardadas entre combates también deben reaparecer con
+    // la vida ya restaurada, incluso si proceden de una versión anterior.
+    restorePlayerBetweenCombats();
+    Storage.save(saved);
     gameState.enemies = [];
     gameState.turn = "ended";
     gameState.combatOver = true;
@@ -985,6 +989,10 @@ function finishCombatVictory() {
   gameState.turn = "ended";
   clearActiveItems();
 
+  const hpBeforeRecovery = gameState.run.player.hp;
+  restorePlayerBetweenCombats();
+  const hpRestored = gameState.run.player.hp - hpBeforeRecovery;
+
   for (const instance of gameState.run.inventory) {
     const definition = itemDefinitions.get(instance.itemId);
     instance.currentDurability = definition?.durability ?? instance.currentDurability;
@@ -999,6 +1007,7 @@ function finishCombatVictory() {
   gameState.run.lastResult = {
     round: gameState.run.round,
     goldReward,
+    hpRestored,
     defeated: gameState.enemies.map(enemy => enemy.name)
   };
   Storage.save(gameState.run);
@@ -1028,13 +1037,14 @@ function finishCombatDefeat() {
 }
 
 function showVictoryResult(result, resumed) {
-  const safeResult = result || { round: gameState.run.round, goldReward: 0, defeated: [] };
+  const safeResult = result || { round: gameState.run.round, goldReward: 0, hpRestored: 0, defeated: [] };
   resultEyebrow.textContent = resumed ? "Partida guardada" : "Combate terminado";
   resultTitle.textContent = "Victoria";
   resultMessage.textContent = "La tienda se añadirá en una fase posterior. Por ahora puedes avanzar al siguiente combate.";
   resultDetails.innerHTML = `
     <span>Ronda superada: <strong>${safeResult.round}</strong></span>
     <span>Oro obtenido: <strong>+${safeResult.goldReward}</strong></span>
+    <span>Vida restaurada para el siguiente combate: <strong>${gameState.run.player.hp}/${gameState.run.player.maxHp}</strong>${safeResult.hpRestored ? ` (+${safeResult.hpRestored})` : ""}.</span>
     <span>Durabilidad de la mochila restaurada.</span>
   `;
   nextCombatButton.textContent = "Continuar expedición";
@@ -1043,7 +1053,18 @@ function showVictoryResult(result, resumed) {
   resultModal.hidden = false;
 }
 
+function restorePlayerBetweenCombats() {
+  const player = gameState.run?.player;
+  if (!player) return;
+
+  player.hp = player.maxHp;
+  player.armor = 0;
+}
+
 function startNextCombat() {
+  // También se aplica aquí para migrar partidas guardadas en una transición
+  // creada antes de que la curación completa entre combates existiera.
+  restorePlayerBetweenCombats();
   gameState.run.round += 1;
   gameState.run.phase = "combat";
   gameState.run.lastResult = null;
@@ -1099,43 +1120,43 @@ function enemyTurn() {
   if (gameState.combatOver) return;
 
   processEnemyDamageStatuses();
-  if (livingEnemies().length === 0) {
+  const frontEnemy = livingEnemies()[0];
+  if (!frontEnemy) {
     finishCombatVictory();
     return;
   }
 
-  const attackMessages = [];
+  let attackMessage = "";
   let totalHpDamage = 0;
   let totalBlocked = 0;
 
-  for (const enemy of livingEnemies()) {
-    const stun = enemy.statuses.stun;
-    if (stun?.turns > 0) {
-      stun.turns -= 1;
-      if (stun.turns <= 0) delete enemy.statuses.stun;
-      attackMessages.push(`${enemy.name} está aturdido`);
-      continue;
-    }
-
-    let attack = enemy.attack;
-    const freeze = enemy.statuses.freeze;
+  // Solo el enemigo situado al frente puede actuar. La retaguardia espera
+  // hasta que los enemigos anteriores sean derrotados.
+  const stun = frontEnemy.statuses.stun;
+  if (stun?.turns > 0) {
+    stun.turns -= 1;
+    if (stun.turns <= 0) delete frontEnemy.statuses.stun;
+    attackMessage = `${frontEnemy.name} está aturdido y no puede atacar`;
+  } else {
+    let attack = frontEnemy.attack;
+    const freeze = frontEnemy.statuses.freeze;
     if (freeze?.turns > 0) {
       attack = Math.max(0, attack - freeze.power);
       freeze.turns -= 1;
-      if (freeze.turns <= 0) delete enemy.statuses.freeze;
+      if (freeze.turns <= 0) delete frontEnemy.statuses.freeze;
     }
 
     const blocked = Math.min(gameState.run.player.armor, attack);
     gameState.run.player.armor -= blocked;
     const hpDamage = Math.max(0, attack - blocked);
     gameState.run.player.hp = Math.max(0, gameState.run.player.hp - hpDamage);
-    totalBlocked += blocked;
-    totalHpDamage += hpDamage;
-    attackMessages.push(`${enemy.name}: ${attack}`);
+    totalBlocked = blocked;
+    totalHpDamage = hpDamage;
+    attackMessage = `${frontEnemy.name}, desde el frente: ${attack}`;
   }
 
   if (totalHpDamage > 0 || totalBlocked > 0) flashPlayer();
-  addLog(`${attackMessages.join(" · ")}. Total: ${totalBlocked} bloqueado, ${totalHpDamage} de daño.`);
+  addLog(`${attackMessage}. Total: ${totalBlocked} bloqueado, ${totalHpDamage} de daño. La retaguardia no ataca.`);
 
   if (gameState.run.player.hp <= 0) {
     finishCombatDefeat();

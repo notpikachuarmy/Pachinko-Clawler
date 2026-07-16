@@ -188,6 +188,12 @@ button:not(:disabled):hover { filter: brightness(1.08); transform: translateY(-1
 .run-stats { display: flex; gap: 18px; margin-top: 10px; color: var(--muted); }
 .combat-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .combat-heading span { color: var(--muted); font-size: .86rem; }
+.combat-rule-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.4;
+}
 
 .battlefield {
   display: grid;
@@ -360,7 +366,7 @@ button:not(:disabled):hover { filter: brightness(1.08); transform: translateY(-1
 }
 
 
-/* Fase 4.3: la mochila informa; el orden de lanzamiento se roba al azar. */
+/* Fase 4.4: frente enemigo único y curación completa entre combates. */
 .inventory-item.is-readonly { cursor: help; }
 .inventory-item.is-readonly:hover { transform: none; }
 
