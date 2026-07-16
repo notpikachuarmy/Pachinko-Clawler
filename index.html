@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Pachinkrawler - Prototipo Fase 1">
+  <title>Pachinkrawler — Fase 1</title>
+  <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+  <main class="game-page">
+    <header class="game-header">
+      <h1>Pachinkrawler</h1>
+      <p>Haz clic en la zona superior para soltar un objeto.</p>
+    </header>
+
+    <section class="game-panel">
+      <div id="game-container" aria-label="Tablero de Pachinkrawler"></div>
+
+      <div class="controls">
+        <p id="status">Objetos en el tablero: 0</p>
+        <button id="reset-button" type="button">Reiniciar</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
+  <script src="./js/main.js"></script>
+</body>
+</html>
