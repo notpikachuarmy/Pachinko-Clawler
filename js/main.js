@@ -4,84 +4,633 @@ const { Engine, Render, Runner, Bodies, Body, Composite, Events, Common, Sleepin
 if (window.decomp) Common.setDecomp(window.decomp);
 
 const CONFIG = Object.freeze({
-  boardWidth: 720, boardHeight: 900, launchAreaHeight: 110, bottomZoneTop: 790,
-  wallThickness: 40, pegRadius: 11, shakeCooldownMs: 1200, enemyAttack: 3,
-  colors: { background:"#171724",launchArea:"#24243a",launchLine:"#e4b84d",wall:"#4d4d65",peg:"#d8d8e4",activation:"#247a52",void:"#15151f",bumper:"#55556f" }
+  boardWidth: 720,
+  boardHeight: 900,
+  launchAreaHeight: 110,
+  bottomZoneTop: 790,
+  wallThickness: 40,
+  pegRadius: 11,
+  shakeCooldownMs: 1200,
+  enemyAttack: 3,
+  enemyTurnDelayMs: 450,
+  colors: {
+    background: "#171724",
+    launchArea: "#24243a",
+    launchLine: "#e4b84d",
+    wall: "#4d4d65",
+    peg: "#d8d8e4",
+    activation: "#247a52",
+    void: "#15151f",
+    bumper: "#55556f"
+  }
 });
+
+const STARTING_LOADOUT = Object.freeze([
+  "iron_sword",
+  "wood_sword",
+  "wood_boken",
+  "wood_dage",
+  "wood_estoque",
+  "wood_katana",
+  "wood_machete",
+  "wood_mandoble",
+  "iron_shield",
+  "mana_potion"
+]);
 
 const itemDefinitions = new Map((window.PACHINKRAWLER_ITEMS || []).map(item => [item.id, item]));
 const itemImages = new Map();
-for (const definition of itemDefinitions.values()) { const image = new Image(); image.src = definition.sprite; itemImages.set(definition.id, image); }
-
-const $ = selector => document.querySelector(selector);
-const gameContainer=$("#game-container"), resetButton=$("#reset-button"), shakeButton=$("#shake-button"), debugButton=$("#debug-button"), passButton=$("#pass-button");
-const backpackButton=$("#backpack-button"), closeBackpack=$("#close-backpack"), backpackModal=$("#backpack-modal"), inventoryList=$("#inventory-list");
-const statusElement=$("#status"), enemyHpElement=$("#enemy-hp"), armorElement=$("#player-armor"), healthElement=$("#player-health"), logElement=$("#event-log");
-const poolCountElement=$("#pool-count"), selectedNameElement=$("#selected-name"), selectedImageElement=$("#selected-image"), turnLabelElement=$("#turn-label");
-
-const engine = Engine.create({ enableSleeping:true, gravity:{x:0,y:1,scale:.001} });
-const render = Render.create({ element:gameContainer, engine, options:{width:CONFIG.boardWidth,height:CONFIG.boardHeight,wireframes:false,background:CONFIG.colors.background,pixelRatio:1} });
-const runner = Runner.create();
-
-const basePool = { sword_test:2, shield_test:2, potion_test:2 };
-const gameState = {
-  activeItems:new Set(), selectedItemId:"sword_test", nextItemId:1, debugHitboxes:false, shakeReady:true,
-  boardBodies:[], slots:[], enemyHp:30, enemyMaxHp:30, playerArmor:0, playerHealth:20, maxHealth:20,
-  turn:"player", pool:{...basePool}, combatOver:false
-};
-
-Render.run(render); Runner.run(runner, engine);
-
-function createBoard(){ clearBoardBodies(); const bodies=[...createWalls(),...createPegs(),...createBottomZone()]; gameState.boardBodies=bodies; Composite.add(engine.world,bodies); }
-function clearBoardBodies(){ for(const body of gameState.boardBodies) Composite.remove(engine.world,body); gameState.boardBodies=[]; }
-function createWalls(){ const h=CONFIG.wallThickness/2,o={isStatic:true,restitution:.45,friction:.05,label:"board-wall",render:{fillStyle:CONFIG.colors.wall}}; return [Bodies.rectangle(-h,CONFIG.boardHeight/2,CONFIG.wallThickness,CONFIG.boardHeight,o),Bodies.rectangle(CONFIG.boardWidth+h,CONFIG.boardHeight/2,CONFIG.wallThickness,CONFIG.boardHeight,o)]; }
-function createPegs(){ const pegs=[]; for(let row=0;row<8;row++){ const offset=row%2?41:0; for(let col=0;col<8;col++){ const x=72+col*82+offset,y=180+row*72; if(x>CONFIG.boardWidth-45)continue; pegs.push(Bodies.circle(x,y,CONFIG.pegRadius,{isStatic:true,restitution:.82,friction:.025,label:"peg",render:{fillStyle:CONFIG.colors.peg,strokeStyle:"#77778d",lineWidth:2}})); }} return pegs; }
-function createBottomZone(){ const slotCount=5,slotWidth=CONFIG.boardWidth/slotCount,types=shuffle(["activation","wall","activation","void","wall"]); gameState.slots=types.map((type,index)=>({type,x:index*slotWidth,width:slotWidth})); const bodies=[]; for(let i=0;i<slotCount;i++){ const type=types[i],center=i*slotWidth+slotWidth/2; if(type==="wall") bodies.push(Bodies.rectangle(center,865,slotWidth-10,60,{isStatic:true,restitution:.7,friction:.08,label:"bottom-wall",render:{fillStyle:CONFIG.colors.bumper,strokeStyle:"#80809c",lineWidth:2}})); else bodies.push(Bodies.rectangle(center,875,slotWidth-8,42,{isStatic:true,isSensor:true,label:type==="activation"?"activation-slot":"void-slot",plugin:{pachinkrawler:{slotType:type}},render:{visible:false}})); } return bodies; }
-
-function createItemBody(definition,x){ const body=Bodies.fromVertices(x,58,[definition.vertices.map(v=>({x:v.x,y:v.y}))],{label:"player-item",restitution:definition.restitution,friction:definition.friction,frictionAir:.003,density:definition.density,sleepThreshold:90,plugin:{pachinkrawler:{instanceId:gameState.nextItemId,itemId:definition.id,resolved:false}},render:{visible:false}},true); body.label="player-item"; for(const part of body.parts){ part.render.visible=false; part.label="player-item-part"; } return body; }
-function getRootBody(body){ return body?.parent && body.parent !== body ? body.parent : body; }
-
-function dropItem(x){
-  if(gameState.turn!=="player"||gameState.combatOver) return addLog("Ahora no puedes lanzar objetos.");
-  if((gameState.pool[gameState.selectedItemId]||0)<=0) return addLog("No quedan unidades de ese objeto en este turno.");
-  const definition=itemDefinitions.get(gameState.selectedItemId); if(!definition)return;
-  const item=createItemBody(definition,clamp(x,40,CONFIG.boardWidth-40)); gameState.nextItemId++;
-  gameState.pool[definition.id]--; Body.setAngle(item,randomBetween(-.12,.12)); Body.setVelocity(item,{x:randomBetween(-.25,.25),y:0});
-  gameState.activeItems.add(item); Composite.add(engine.world,item); chooseAvailableSelection(); updateUi();
+for (const definition of itemDefinitions.values()) {
+  const image = new Image();
+  image.src = definition.sprite;
+  itemImages.set(definition.id, image);
 }
 
-function resolveItem(item,result){ const root=getRootBody(item),data=root.plugin?.pachinkrawler; if(!data||data.resolved)return; data.resolved=true; const definition=itemDefinitions.get(data.itemId); if(result==="activation")activateEffect(definition); else addLog(`${definition.name} cayó al vacío y no se activó.`); removeItem(root); checkTurnReady(); }
-function activateEffect(definition){ const effect=definition.effect||{type:"damage",value:1}; if(effect.type==="damage"){ gameState.enemyHp=Math.max(0,gameState.enemyHp-effect.value); addLog(`${definition.name} se activó: ${effect.value} de daño.`); } else if(effect.type==="armor"){ gameState.playerArmor+=effect.value; addLog(`${definition.name} se activó: +${effect.value} de armadura.`); } else if(effect.type==="heal"){ const before=gameState.playerHealth; gameState.playerHealth=Math.min(gameState.maxHealth,gameState.playerHealth+effect.value); addLog(`${definition.name} se activó: +${gameState.playerHealth-before} de vida.`); } if(gameState.enemyHp<=0){gameState.combatOver=true;gameState.turn="ended";addLog("¡Enemigo derrotado!");} updateUi(); }
+const $ = selector => document.querySelector(selector);
+const gameContainer = $("#game-container");
+const shakeButton = $("#shake-button");
+const debugButton = $("#debug-button");
+const passButton = $("#pass-button");
+const backpackButton = $("#backpack-button");
+const closeBackpack = $("#close-backpack");
+const backpackModal = $("#backpack-modal");
+const inventoryList = $("#inventory-list");
+const statusElement = $("#status");
+const enemyHpElement = $("#enemy-hp");
+const armorElement = $("#player-armor");
+const healthElement = $("#player-health");
+const logElement = $("#event-log");
+const poolCountElement = $("#pool-count");
+const selectedNameElement = $("#selected-name");
+const selectedImageElement = $("#selected-image");
+const turnLabelElement = $("#turn-label");
 
-Events.on(engine,"collisionStart",event=>{ for(const pair of event.pairs){ const candidates=[pair.bodyA,pair.bodyB]; const part=candidates.find(body=>body.label==="player-item"||body.label==="player-item-part"); if(!part)continue; const item=getRootBody(part); const target=candidates.find(body=>body!==part); if(target?.label==="activation-slot")resolveItem(item,"activation"); else if(target?.label==="void-slot")resolveItem(item,"void"); }});
-Events.on(engine,"afterUpdate",()=>{ for(const item of [...gameState.activeItems]) if(item.position.y>CONFIG.boardHeight+140||item.position.x<-180||item.position.x>CONFIG.boardWidth+180) resolveItem(item,"void"); });
+const engine = Engine.create({
+  enableSleeping: true,
+  gravity: { x: 0, y: 1, scale: 0.001 }
+});
 
-function endPlayerTurn(){ if(gameState.turn!=="player"||gameState.combatOver)return; if(gameState.activeItems.size>0)return addLog("Espera a que terminen de caer los objetos activos."); gameState.turn="enemy"; updateUi(); addLog("Turno enemigo…"); window.setTimeout(enemyTurn,450); }
-function enemyTurn(){ if(gameState.combatOver)return; let damage=CONFIG.enemyAttack; const blocked=Math.min(gameState.playerArmor,damage); gameState.playerArmor-=blocked; damage-=blocked; gameState.playerHealth=Math.max(0,gameState.playerHealth-damage); addLog(`El enemigo ataca por ${CONFIG.enemyAttack}: ${blocked} bloqueado, ${damage} de daño.`); if(gameState.playerHealth<=0){gameState.combatOver=true;gameState.turn="ended";addLog("Has sido derrotado.");} else {gameState.pool={...basePool};gameState.turn="player";chooseAvailableSelection();} updateUi(); }
-function checkTurnReady(){ if(gameState.turn==="player"&&gameState.activeItems.size===0&&remainingPool()===0) addLog("No quedan objetos. Pasa el turno para recibir el ataque enemigo."); }
+const render = Render.create({
+  element: gameContainer,
+  engine,
+  options: {
+    width: CONFIG.boardWidth,
+    height: CONFIG.boardHeight,
+    wireframes: false,
+    background: CONFIG.colors.background,
+    pixelRatio: 1
+  }
+});
 
-function selectItem(id){ if(!itemDefinitions.has(id)||(gameState.pool[id]||0)<=0)return; gameState.selectedItemId=id; closeBackpackModal(); updateUi(); }
-function chooseAvailableSelection(){ if((gameState.pool[gameState.selectedItemId]||0)>0)return; const next=Object.keys(gameState.pool).find(id=>gameState.pool[id]>0); if(next)gameState.selectedItemId=next; }
-function remainingPool(){ return Object.values(gameState.pool).reduce((sum,n)=>sum+n,0); }
-function openBackpack(){ renderInventory(); backpackModal.hidden=false; }
-function closeBackpackModal(){ backpackModal.hidden=true; }
-function renderInventory(){ inventoryList.innerHTML=""; for(const [id,definition] of itemDefinitions){ const count=gameState.pool[id]||0; const button=document.createElement("button"); button.type="button"; button.className=`inventory-item${id===gameState.selectedItemId?" is-selected":""}`; button.disabled=count<=0||gameState.turn!=="player"; button.innerHTML=`<img src="${definition.sprite}" alt=""><span><strong>${definition.name}</strong><small>${effectText(definition)}</small></span><strong>x${count}</strong>`; button.addEventListener("click",()=>selectItem(id)); inventoryList.append(button); } }
-function effectText(def){ const e=def.effect; return e.type==="damage"?`${e.value} daño`:e.type==="armor"?`${e.value} armadura`:`${e.value} vida`; }
+const runner = Runner.create();
 
-function shakeMachine(){ if(!gameState.shakeReady||gameState.activeItems.size===0)return; gameState.shakeReady=false; updateUi(); for(const item of gameState.activeItems){Sleeping.set(item,false);Body.applyForce(item,item.position,{x:randomBetween(-.012,.012)*item.mass,y:randomBetween(-.006,-.002)*item.mass});Body.setAngularVelocity(item,item.angularVelocity+randomBetween(-.08,.08));} setTimeout(()=>{gameState.shakeReady=true;updateUi();},CONFIG.shakeCooldownMs); }
-function removeItem(item){ Composite.remove(engine.world,item);gameState.activeItems.delete(item);updateUi(); }
-function resetItems(){ for(const item of [...gameState.activeItems])removeItem(item);gameState.nextItemId=1; }
-function fullReset(){ resetItems(); gameState.enemyHp=30;gameState.playerArmor=0;gameState.playerHealth=20;gameState.pool={...basePool};gameState.turn="player";gameState.combatOver=false;gameState.selectedItemId="sword_test";createBoard();addLog("Nuevo combate: el tablero se ha generado automáticamente.");updateUi(); }
+const gameState = {
+  activeItems: new Set(),
+  hand: [],
+  selectedInstanceId: null,
+  nextPhysicsId: 1,
+  nextInventoryId: 1,
+  debugHitboxes: false,
+  shakeReady: true,
+  boardBodies: [],
+  slots: [],
+  enemyHp: 30,
+  enemyMaxHp: 30,
+  playerArmor: 0,
+  playerHealth: 20,
+  maxHealth: 20,
+  turn: "player",
+  combatOver: false
+};
 
-render.canvas.addEventListener("pointerdown",event=>{ const bounds=render.canvas.getBoundingClientRect(),x=(event.clientX-bounds.left)*(CONFIG.boardWidth/bounds.width),y=(event.clientY-bounds.top)*(CONFIG.boardHeight/bounds.height); if(y<=CONFIG.launchAreaHeight)dropItem(x); else setStatus("Haz clic dentro de la franja superior."); });
-Events.on(render,"afterRender",()=>{const ctx=render.context;ctx.save();drawLaunchArea(ctx);drawBottomSlots(ctx);drawItemSprites(ctx);if(gameState.debugHitboxes)drawHitboxes(ctx);ctx.restore();});
-function drawLaunchArea(ctx){ctx.fillStyle=CONFIG.colors.launchArea;ctx.globalAlpha=.72;ctx.fillRect(0,0,CONFIG.boardWidth,CONFIG.launchAreaHeight);ctx.globalAlpha=1;ctx.strokeStyle=CONFIG.colors.launchLine;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,CONFIG.launchAreaHeight);ctx.lineTo(CONFIG.boardWidth,CONFIG.launchAreaHeight);ctx.stroke();ctx.fillStyle="#f4f4f8";ctx.font="600 18px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(gameState.turn==="player"?"HAZ CLIC AQUÍ PARA SOLTAR UN OBJETO":"TURNO ENEMIGO",CONFIG.boardWidth/2,CONFIG.launchAreaHeight/2);}
-function drawBottomSlots(ctx){ctx.font="700 15px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";for(const slot of gameState.slots){if(slot.type==="activation"){ctx.fillStyle=CONFIG.colors.activation;ctx.fillRect(slot.x+4,CONFIG.bottomZoneTop,slot.width-8,110);ctx.fillStyle="#f4fff9";ctx.fillText("ACTIVAR",slot.x+slot.width/2,845);}else if(slot.type==="void"){ctx.fillStyle=CONFIG.colors.void;ctx.fillRect(slot.x+4,CONFIG.bottomZoneTop,slot.width-8,110);ctx.strokeStyle="#555568";ctx.setLineDash([8,8]);ctx.strokeRect(slot.x+8,CONFIG.bottomZoneTop+4,slot.width-16,100);ctx.setLineDash([]);ctx.fillStyle="#a5a5b7";ctx.fillText("VACÍO",slot.x+slot.width/2,845);}}}
-function drawItemSprites(ctx){for(const item of gameState.activeItems){const id=item.plugin?.pachinkrawler?.itemId,def=itemDefinitions.get(id),image=itemImages.get(id);if(!def||!image?.complete||!image.naturalWidth)continue;const w=image.naturalWidth*def.scale,h=image.naturalHeight*def.scale;ctx.save();ctx.translate(item.position.x,item.position.y);ctx.rotate(item.angle);ctx.drawImage(image,-w/2,-h/2,w,h);ctx.restore();}}
-function drawHitboxes(ctx){ctx.strokeStyle="#ff4d6d";ctx.fillStyle="rgba(255,77,109,.13)";ctx.lineWidth=2;for(const item of gameState.activeItems){const parts=item.parts.length>1?item.parts.slice(1):item.parts;for(const part of parts){ctx.beginPath();part.vertices.forEach((v,i)=>i?ctx.lineTo(v.x,v.y):ctx.moveTo(v.x,v.y));ctx.closePath();ctx.fill();ctx.stroke();}}}
+Render.run(render);
+Runner.run(runner, engine);
 
-function updateUi(){ const def=itemDefinitions.get(gameState.selectedItemId); enemyHpElement.textContent=`${gameState.enemyHp}/${gameState.enemyMaxHp}`;armorElement.textContent=gameState.playerArmor;healthElement.textContent=`${gameState.playerHealth}/${gameState.maxHealth}`;poolCountElement.textContent=remainingPool();selectedNameElement.textContent=def?.name||"—";if(def)selectedImageElement.src=def.sprite;turnLabelElement.textContent=gameState.combatOver?"Combate terminado":gameState.turn==="player"?"Turno del jugador":"Turno del enemigo"; passButton.disabled=gameState.turn!=="player"||gameState.activeItems.size>0||gameState.combatOver;backpackButton.disabled=gameState.turn!=="player"||gameState.combatOver;shakeButton.disabled=!gameState.shakeReady||gameState.activeItems.size===0;setStatus(`Objetos activos: ${gameState.activeItems.size} · Pool: ${remainingPool()}`);if(!backpackModal.hidden)renderInventory(); }
-function addLog(message){logElement.textContent=message;} function setStatus(message){statusElement.textContent=message;} function toggleDebug(){gameState.debugHitboxes=!gameState.debugHitboxes;debugButton.textContent=`Hitboxes: ${gameState.debugHitboxes?"ON":"OFF"}`;} function clamp(v,min,max){return Math.min(Math.max(v,min),max);} function randomBetween(min,max){return Math.random()*(max-min)+min;} function shuffle(values){const r=[...values];for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
+function createBoard() {
+  clearBoardBodies();
+  const bodies = [...createWalls(), ...createPegs(), ...createBottomZone()];
+  gameState.boardBodies = bodies;
+  Composite.add(engine.world, bodies);
+}
 
-resetButton.addEventListener("click",fullReset);shakeButton.addEventListener("click",shakeMachine);debugButton.addEventListener("click",toggleDebug);passButton.addEventListener("click",endPlayerTurn);backpackButton.addEventListener("click",openBackpack);closeBackpack.addEventListener("click",closeBackpackModal);backpackModal.addEventListener("click",e=>{if(e.target===backpackModal)closeBackpackModal();});
-createBoard();updateUi();
+function clearBoardBodies() {
+  for (const body of gameState.boardBodies) Composite.remove(engine.world, body);
+  gameState.boardBodies = [];
+}
+
+function createWalls() {
+  const half = CONFIG.wallThickness / 2;
+  const options = {
+    isStatic: true,
+    restitution: 0.45,
+    friction: 0.05,
+    label: "board-wall",
+    render: { fillStyle: CONFIG.colors.wall }
+  };
+
+  return [
+    Bodies.rectangle(-half, CONFIG.boardHeight / 2, CONFIG.wallThickness, CONFIG.boardHeight, options),
+    Bodies.rectangle(CONFIG.boardWidth + half, CONFIG.boardHeight / 2, CONFIG.wallThickness, CONFIG.boardHeight, options)
+  ];
+}
+
+function createPegs() {
+  const pegs = [];
+  for (let row = 0; row < 8; row += 1) {
+    const offset = row % 2 ? 41 : 0;
+    for (let col = 0; col < 8; col += 1) {
+      const x = 72 + col * 82 + offset;
+      const y = 180 + row * 72;
+      if (x > CONFIG.boardWidth - 45) continue;
+      pegs.push(Bodies.circle(x, y, CONFIG.pegRadius, {
+        isStatic: true,
+        restitution: 0.82,
+        friction: 0.025,
+        label: "peg",
+        render: { fillStyle: CONFIG.colors.peg, strokeStyle: "#77778d", lineWidth: 2 }
+      }));
+    }
+  }
+  return pegs;
+}
+
+function createBottomZone() {
+  const slotCount = 5;
+  const slotWidth = CONFIG.boardWidth / slotCount;
+  const types = shuffle(["activation", "wall", "activation", "void", "wall"]);
+  gameState.slots = types.map((type, index) => ({ type, x: index * slotWidth, width: slotWidth }));
+
+  const bodies = [];
+  for (let index = 0; index < slotCount; index += 1) {
+    const type = types[index];
+    const center = index * slotWidth + slotWidth / 2;
+
+    if (type === "wall") {
+      bodies.push(Bodies.rectangle(center, 865, slotWidth - 10, 60, {
+        isStatic: true,
+        restitution: 0.7,
+        friction: 0.08,
+        label: "bottom-wall",
+        render: { fillStyle: CONFIG.colors.bumper, strokeStyle: "#80809c", lineWidth: 2 }
+      }));
+    } else {
+      bodies.push(Bodies.rectangle(center, 875, slotWidth - 8, 42, {
+        isStatic: true,
+        isSensor: true,
+        label: type === "activation" ? "activation-slot" : "void-slot",
+        render: { visible: false }
+      }));
+    }
+  }
+  return bodies;
+}
+
+function buildHand() {
+  gameState.hand = STARTING_LOADOUT
+    .filter(itemId => itemDefinitions.has(itemId))
+    .map(itemId => ({
+      instanceId: `inventory-${gameState.nextInventoryId++}`,
+      itemId,
+      consumed: false
+    }));
+  selectRandomRemainingItem();
+}
+
+function remainingItems() {
+  return gameState.hand.filter(instance => !instance.consumed);
+}
+
+function getSelectedInstance() {
+  return gameState.hand.find(instance => instance.instanceId === gameState.selectedInstanceId && !instance.consumed) || null;
+}
+
+function selectRandomRemainingItem() {
+  const remaining = remainingItems();
+  gameState.selectedInstanceId = remaining.length
+    ? remaining[Math.floor(Math.random() * remaining.length)].instanceId
+    : null;
+}
+
+function selectInventoryInstance(instanceId) {
+  const instance = gameState.hand.find(entry => entry.instanceId === instanceId && !entry.consumed);
+  if (!instance || gameState.turn !== "player" || gameState.combatOver) return;
+  gameState.selectedInstanceId = instance.instanceId;
+  closeBackpackModal();
+  updateUi();
+}
+
+function createItemBody(definition, inventoryInstance, x) {
+  const body = Bodies.fromVertices(
+    x,
+    58,
+    [definition.vertices.map(vertex => ({ x: vertex.x, y: vertex.y }))],
+    {
+      label: "player-item",
+      restitution: definition.restitution,
+      friction: definition.friction,
+      frictionAir: 0.003,
+      density: definition.density,
+      sleepThreshold: 90,
+      plugin: {
+        pachinkrawler: {
+          physicsId: gameState.nextPhysicsId,
+          inventoryInstanceId: inventoryInstance.instanceId,
+          itemId: definition.id,
+          resolved: false
+        }
+      },
+      render: { visible: false }
+    },
+    true
+  );
+
+  body.label = "player-item";
+  for (const part of body.parts) {
+    part.render.visible = false;
+    part.label = "player-item-part";
+  }
+  return body;
+}
+
+function getRootBody(body) {
+  return body?.parent && body.parent !== body ? body.parent : body;
+}
+
+function dropItem(x) {
+  if (gameState.turn !== "player" || gameState.combatOver) {
+    addLog("Ahora no puedes lanzar objetos.");
+    return;
+  }
+
+  const inventoryInstance = getSelectedInstance();
+  if (!inventoryInstance) {
+    addLog("No quedan objetos disponibles en este turno.");
+    return;
+  }
+
+  const definition = itemDefinitions.get(inventoryInstance.itemId);
+  if (!definition) return;
+
+  const item = createItemBody(definition, inventoryInstance, clamp(x, 40, CONFIG.boardWidth - 40));
+  gameState.nextPhysicsId += 1;
+  inventoryInstance.consumed = true;
+
+  Body.setAngle(item, randomBetween(-0.12, 0.12));
+  Body.setVelocity(item, { x: randomBetween(-0.25, 0.25), y: 0 });
+  gameState.activeItems.add(item);
+  Composite.add(engine.world, item);
+
+  selectRandomRemainingItem();
+  updateUi();
+}
+
+function resolveItem(item, result) {
+  const root = getRootBody(item);
+  const data = root.plugin?.pachinkrawler;
+  if (!data || data.resolved) return;
+
+  data.resolved = true;
+  const definition = itemDefinitions.get(data.itemId);
+  if (result === "activation") activateEffect(definition);
+  else addLog(`${definition.name} cayó al vacío y no se activó.`);
+
+  removeItem(root);
+}
+
+function activateEffect(definition) {
+  const effect = definition.effect || { type: "damage", value: 1 };
+
+  if (effect.type === "damage") {
+    gameState.enemyHp = Math.max(0, gameState.enemyHp - effect.value);
+    addLog(`${definition.name} se activó: ${effect.value} de daño.`);
+  } else if (effect.type === "armor") {
+    gameState.playerArmor += effect.value;
+    addLog(`${definition.name} se activó: +${effect.value} de armadura.`);
+  } else if (effect.type === "heal") {
+    const before = gameState.playerHealth;
+    gameState.playerHealth = Math.min(gameState.maxHealth, gameState.playerHealth + effect.value);
+    addLog(`${definition.name} se activó: +${gameState.playerHealth - before} de vida.`);
+  }
+
+  if (gameState.enemyHp <= 0) {
+    gameState.combatOver = true;
+    gameState.turn = "ended";
+    clearActiveItems("victory");
+    addLog("¡Enemigo derrotado!");
+  }
+  updateUi();
+}
+
+Events.on(engine, "collisionStart", event => {
+  for (const pair of event.pairs) {
+    const candidates = [pair.bodyA, pair.bodyB];
+    const part = candidates.find(body => body.label === "player-item" || body.label === "player-item-part");
+    if (!part) continue;
+
+    const item = getRootBody(part);
+    const target = candidates.find(body => body !== part);
+    if (target?.label === "activation-slot") resolveItem(item, "activation");
+    else if (target?.label === "void-slot") resolveItem(item, "void");
+  }
+});
+
+Events.on(engine, "afterUpdate", () => {
+  for (const item of [...gameState.activeItems]) {
+    if (
+      item.position.y > CONFIG.boardHeight + 140 ||
+      item.position.x < -180 ||
+      item.position.x > CONFIG.boardWidth + 180
+    ) {
+      resolveItem(item, "void");
+    }
+  }
+});
+
+function endPlayerTurn() {
+  if (gameState.turn !== "player" || gameState.combatOver) return;
+
+  const discarded = gameState.activeItems.size;
+  clearActiveItems("turn-ended");
+  gameState.turn = "enemy";
+  closeBackpackModal();
+
+  if (discarded > 0) {
+    addLog(`Turno terminado: ${discarded} objeto${discarded === 1 ? "" : "s"} activo${discarded === 1 ? "" : "s"} se pierde${discarded === 1 ? "" : "n"} sin activar.`);
+  } else {
+    addLog("Turno enemigo…");
+  }
+
+  updateUi();
+  window.setTimeout(enemyTurn, CONFIG.enemyTurnDelayMs);
+}
+
+function enemyTurn() {
+  if (gameState.combatOver) return;
+
+  let damage = CONFIG.enemyAttack;
+  const blocked = Math.min(gameState.playerArmor, damage);
+  gameState.playerArmor -= blocked;
+  damage -= blocked;
+  gameState.playerHealth = Math.max(0, gameState.playerHealth - damage);
+
+  addLog(`El enemigo ataca por ${CONFIG.enemyAttack}: ${blocked} bloqueado, ${damage} de daño.`);
+
+  if (gameState.playerHealth <= 0) {
+    gameState.combatOver = true;
+    gameState.turn = "ended";
+    addLog("Has sido derrotado.");
+  } else {
+    buildHand();
+    gameState.turn = "player";
+  }
+  updateUi();
+}
+
+function openBackpack() {
+  renderInventory();
+  backpackModal.hidden = false;
+}
+
+function closeBackpackModal() {
+  backpackModal.hidden = true;
+}
+
+function renderInventory() {
+  inventoryList.innerHTML = "";
+
+  for (const instance of gameState.hand) {
+    const definition = itemDefinitions.get(instance.itemId);
+    if (!definition) continue;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "inventory-item";
+    button.classList.toggle("is-selected", instance.instanceId === gameState.selectedInstanceId && !instance.consumed);
+    button.classList.toggle("is-consumed", instance.consumed);
+    button.disabled = instance.consumed || gameState.turn !== "player" || gameState.combatOver;
+    button.setAttribute("aria-label", `${definition.name}. ${effectText(definition)}`);
+    button.dataset.tooltip = `${definition.name} · ${effectText(definition)}`;
+    button.innerHTML = `<img src="${definition.sprite}" alt="">`;
+    button.addEventListener("click", () => selectInventoryInstance(instance.instanceId));
+    inventoryList.append(button);
+  }
+}
+
+function effectText(definition) {
+  const effect = definition.effect;
+  if (!effect) return "Efecto desconocido";
+  if (effect.type === "damage") return `${effect.value} de daño`;
+  if (effect.type === "armor") return `${effect.value} de armadura`;
+  return `${effect.value} de vida`;
+}
+
+function shakeMachine() {
+  if (!gameState.shakeReady || gameState.activeItems.size === 0) return;
+
+  gameState.shakeReady = false;
+  updateUi();
+
+  for (const item of gameState.activeItems) {
+    Sleeping.set(item, false);
+    Body.applyForce(item, item.position, {
+      x: randomBetween(-0.012, 0.012) * item.mass,
+      y: randomBetween(-0.006, -0.002) * item.mass
+    });
+    Body.setAngularVelocity(item, item.angularVelocity + randomBetween(-0.08, 0.08));
+  }
+
+  window.setTimeout(() => {
+    gameState.shakeReady = true;
+    updateUi();
+  }, CONFIG.shakeCooldownMs);
+}
+
+function removeItem(item) {
+  Composite.remove(engine.world, item);
+  gameState.activeItems.delete(item);
+  updateUi();
+}
+
+function clearActiveItems() {
+  for (const item of [...gameState.activeItems]) {
+    const data = item.plugin?.pachinkrawler;
+    if (data) data.resolved = true;
+    Composite.remove(engine.world, item);
+  }
+  gameState.activeItems.clear();
+}
+
+render.canvas.addEventListener("pointerdown", event => {
+  const bounds = render.canvas.getBoundingClientRect();
+  const x = (event.clientX - bounds.left) * (CONFIG.boardWidth / bounds.width);
+  const y = (event.clientY - bounds.top) * (CONFIG.boardHeight / bounds.height);
+
+  if (y <= CONFIG.launchAreaHeight) dropItem(x);
+  else setStatus("Haz clic dentro de la franja superior.");
+});
+
+Events.on(render, "afterRender", () => {
+  const context = render.context;
+  context.save();
+  drawLaunchArea(context);
+  drawBottomSlots(context);
+  drawItemSprites(context);
+  if (gameState.debugHitboxes) drawHitboxes(context);
+  context.restore();
+});
+
+function drawLaunchArea(context) {
+  context.fillStyle = CONFIG.colors.launchArea;
+  context.globalAlpha = 0.72;
+  context.fillRect(0, 0, CONFIG.boardWidth, CONFIG.launchAreaHeight);
+  context.globalAlpha = 1;
+  context.strokeStyle = CONFIG.colors.launchLine;
+  context.lineWidth = 3;
+  context.beginPath();
+  context.moveTo(0, CONFIG.launchAreaHeight);
+  context.lineTo(CONFIG.boardWidth, CONFIG.launchAreaHeight);
+  context.stroke();
+  context.fillStyle = "#f4f4f8";
+  context.font = "600 18px system-ui";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+
+  const text = gameState.turn === "player"
+    ? (remainingItems().length ? "HAZ CLIC AQUÍ PARA SOLTAR UN OBJETO" : "SIN OBJETOS · PASA EL TURNO")
+    : "TURNO ENEMIGO";
+  context.fillText(text, CONFIG.boardWidth / 2, CONFIG.launchAreaHeight / 2);
+}
+
+function drawBottomSlots(context) {
+  context.font = "700 15px system-ui";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+
+  for (const slot of gameState.slots) {
+    if (slot.type === "activation") {
+      context.fillStyle = CONFIG.colors.activation;
+      context.fillRect(slot.x + 4, CONFIG.bottomZoneTop, slot.width - 8, 110);
+      context.fillStyle = "#f4fff9";
+      context.fillText("ACTIVAR", slot.x + slot.width / 2, 845);
+    } else if (slot.type === "void") {
+      context.fillStyle = CONFIG.colors.void;
+      context.fillRect(slot.x + 4, CONFIG.bottomZoneTop, slot.width - 8, 110);
+      context.strokeStyle = "#555568";
+      context.setLineDash([8, 8]);
+      context.strokeRect(slot.x + 8, CONFIG.bottomZoneTop + 4, slot.width - 16, 100);
+      context.setLineDash([]);
+      context.fillStyle = "#a5a5b7";
+      context.fillText("VACÍO", slot.x + slot.width / 2, 845);
+    }
+  }
+}
+
+function drawItemSprites(context) {
+  for (const item of gameState.activeItems) {
+    const itemId = item.plugin?.pachinkrawler?.itemId;
+    const definition = itemDefinitions.get(itemId);
+    const image = itemImages.get(itemId);
+    if (!definition || !image?.complete || !image.naturalWidth) continue;
+
+    const width = image.naturalWidth * definition.scale;
+    const height = image.naturalHeight * definition.scale;
+    context.save();
+    context.translate(item.position.x, item.position.y);
+    context.rotate(item.angle);
+    context.drawImage(image, -width / 2, -height / 2, width, height);
+    context.restore();
+  }
+}
+
+function drawHitboxes(context) {
+  context.strokeStyle = "#ff4d6d";
+  context.fillStyle = "rgba(255,77,109,.13)";
+  context.lineWidth = 2;
+
+  for (const item of gameState.activeItems) {
+    const parts = item.parts.length > 1 ? item.parts.slice(1) : item.parts;
+    for (const part of parts) {
+      context.beginPath();
+      part.vertices.forEach((vertex, index) => {
+        if (index) context.lineTo(vertex.x, vertex.y);
+        else context.moveTo(vertex.x, vertex.y);
+      });
+      context.closePath();
+      context.fill();
+      context.stroke();
+    }
+  }
+}
+
+function updateUi() {
+  const selectedInstance = getSelectedInstance();
+  const definition = selectedInstance ? itemDefinitions.get(selectedInstance.itemId) : null;
+
+  enemyHpElement.textContent = `${gameState.enemyHp}/${gameState.enemyMaxHp}`;
+  armorElement.textContent = gameState.playerArmor;
+  healthElement.textContent = `${gameState.playerHealth}/${gameState.maxHealth}`;
+  poolCountElement.textContent = remainingItems().length;
+  selectedNameElement.textContent = definition?.name || "Sin objetos";
+  selectedImageElement.hidden = !definition;
+  if (definition) selectedImageElement.src = definition.sprite;
+
+  turnLabelElement.textContent = gameState.combatOver
+    ? "Combate terminado"
+    : gameState.turn === "player"
+      ? "Turno del jugador"
+      : "Turno del enemigo";
+
+  passButton.disabled = gameState.turn !== "player" || gameState.combatOver;
+  backpackButton.disabled = gameState.turn !== "player" || gameState.combatOver || remainingItems().length === 0;
+  shakeButton.disabled = !gameState.shakeReady || gameState.activeItems.size === 0;
+  setStatus(`Objetos activos: ${gameState.activeItems.size} · Pool: ${remainingItems().length}`);
+
+  if (!backpackModal.hidden) renderInventory();
+}
+
+function addLog(message) {
+  logElement.textContent = message;
+}
+
+function setStatus(message) {
+  statusElement.textContent = message;
+}
+
+function toggleDebug() {
+  gameState.debugHitboxes = !gameState.debugHitboxes;
+  debugButton.textContent = `Hitboxes: ${gameState.debugHitboxes ? "ON" : "OFF"}`;
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
+function randomBetween(minimum, maximum) {
+  return Math.random() * (maximum - minimum) + minimum;
+}
+
+function shuffle(values) {
+  const result = [...values];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [result[index], result[randomIndex]] = [result[randomIndex], result[index]];
+  }
+  return result;
+}
+
+shakeButton.addEventListener("click", shakeMachine);
+debugButton.addEventListener("click", toggleDebug);
+passButton.addEventListener("click", endPlayerTurn);
+backpackButton.addEventListener("click", openBackpack);
+closeBackpack.addEventListener("click", closeBackpackModal);
+backpackModal.addEventListener("click", event => {
+  if (event.target === backpackModal) closeBackpackModal();
+});
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeBackpackModal();
+});
+
+createBoard();
+buildHand();
+updateUi();

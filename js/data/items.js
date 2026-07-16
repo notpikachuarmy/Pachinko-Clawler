@@ -184,4 +184,58 @@ window.PACHINKRAWLER_ITEMS = [
       }
     ]
   }
+,
+  {
+    "id": "iron_sword", "name": "Espada de hierro", "sprite": "./assets/sprites/iron_sword.png",
+    "scale": 0.28, "density": 0.0023, "restitution": 0.38, "friction": 0.18, "durability": 4,
+    "effect": { "type": "damage", "value": 5 },
+    "vertices": [{"x":-3.6,"y":-30},{"x":-6.9,"y":-26.4},{"x":-5.4,"y":-14.7},{"x":-12,"y":-12.6},{"x":-14.1,"y":-7.8},{"x":-8.7,"y":-5.7},{"x":-8.7,"y":21.6},{"x":-3.6,"y":28.5},{"x":-0.3,"y":28.5},{"x":5.4,"y":21.6},{"x":5.4,"y":-5.7},{"x":9,"y":-6},{"x":10.8,"y":-10.8},{"x":1.5,"y":-14.7},{"x":3.3,"y":-26.4}]
+  },
+  {
+    "id": "wood_sword", "name": "Espada de madera", "sprite": "./assets/sprites/wood_sword.png",
+    "scale": 0.28, "density": 0.0018, "restitution": 0.42, "friction": 0.18, "durability": 3,
+    "effect": { "type": "damage", "value": 4 }, "vertices": [{"x":-3.6,"y":-30},{"x":-6.9,"y":-26.4},{"x":-5.4,"y":-14.7},{"x":-12,"y":-12.6},{"x":-14.1,"y":-7.8},{"x":-8.7,"y":-5.7},{"x":-8.7,"y":21.6},{"x":-3.6,"y":28.5},{"x":-0.3,"y":28.5},{"x":5.4,"y":21.6},{"x":5.4,"y":-5.7},{"x":9,"y":-6},{"x":10.8,"y":-10.8},{"x":1.5,"y":-14.7},{"x":3.3,"y":-26.4}]
+  },
+  {
+    "id": "wood_boken", "name": "Bokken de madera", "sprite": "./assets/sprites/wood_boken.png",
+    "scale": 0.28, "density": 0.0018, "restitution": 0.42, "friction": 0.18, "durability": 3,
+    "effect": { "type": "damage", "value": 4 }, "vertices": [{"x":-3.6,"y":-30},{"x":-6.9,"y":-26.4},{"x":-5.4,"y":-14.7},{"x":-12,"y":-12.6},{"x":-14.1,"y":-7.8},{"x":-8.7,"y":-5.7},{"x":-8.7,"y":21.6},{"x":-3.6,"y":28.5},{"x":-0.3,"y":28.5},{"x":5.4,"y":21.6},{"x":5.4,"y":-5.7},{"x":9,"y":-6},{"x":10.8,"y":-10.8},{"x":1.5,"y":-14.7},{"x":3.3,"y":-26.4}]
+  },
+  {
+    "id": "wood_dage", "name": "Daga de madera", "sprite": "./assets/sprites/wood_dage.png",
+    "scale": 0.25, "density": 0.0017, "restitution": 0.46, "friction": 0.16, "durability": 3,
+    "effect": { "type": "damage", "value": 3 }, "vertices": [{"x":-3.6,"y":-30},{"x":-6.9,"y":-26.4},{"x":-5.4,"y":-14.7},{"x":-12,"y":-12.6},{"x":-14.1,"y":-7.8},{"x":-8.7,"y":-5.7},{"x":-8.7,"y":21.6},{"x":-3.6,"y":28.5},{"x":-0.3,"y":28.5},{"x":5.4,"y":21.6},{"x":5.4,"y":-5.7},{"x":9,"y":-6},{"x":10.8,"y":-10.8},{"x":1.5,"y":-14.7},{"x":3.3,"y":-26.4}]
+  },
+  {
+    "id": "wood_estoque", "name": "Estoque de madera", "sprite": "./assets/sprites/wood_estoque.png",
+    "scale": 0.28, "density": 0.0017, "restitution": 0.44, "friction": 0.15, "durability": 3,
+    "effect": { "type": "damage", "value": 4 }, "vertices": [{"x":-3.6,"y":-30},{"x":-6.9,"y":-26.4},{"x":-5.4,"y":-14.7},{"x":-12,"y":-12.6},{"x":-14.1,"y":-7.8},{"x":-8.7,"y":-5.7},{"x":-8.7,"y":21.6},{"x":-3.6,"y":28.5},{"x":-0.3,"y":28.5},{"x":5.4,"y":21.6},{"x":5.4,"y":-5.7},{"x":9,"y":-6},{"x":10.8,"y":-10.8},{"x":1.5,"y":-14.7},{"x":3.3,"y":-26.4}]
+  },
+  {
+    "id": "wood_katana", "name": "Katana de madera", "sprite": "./assets/sprites/wood_katana.png",
+    "scale": 0.28, "density": 0.0018, "restitution": 0.41, "friction": 0.16, "durability": 3,
+    "effect": { "type": "damage", "value": 4 }, "vertices": [{"x":-3.6,"y":-30},{"x":-6.9,"y":-26.4},{"x":-5.4,"y":-14.7},{"x":-12,"y":-12.6},{"x":-14.1,"y":-7.8},{"x":-8.7,"y":-5.7},{"x":-8.7,"y":21.6},{"x":-3.6,"y":28.5},{"x":-0.3,"y":28.5},{"x":5.4,"y":21.6},{"x":5.4,"y":-5.7},{"x":9,"y":-6},{"x":10.8,"y":-10.8},{"x":1.5,"y":-14.7},{"x":3.3,"y":-26.4}]
+  },
+  {
+    "id": "wood_machete", "name": "Machete de madera", "sprite": "./assets/sprites/wood_machete.png",
+    "scale": 0.28, "density": 0.0019, "restitution": 0.38, "friction": 0.2, "durability": 3,
+    "effect": { "type": "damage", "value": 4 }, "vertices": [{"x":-3.6,"y":-30},{"x":-6.9,"y":-26.4},{"x":-5.4,"y":-14.7},{"x":-12,"y":-12.6},{"x":-14.1,"y":-7.8},{"x":-8.7,"y":-5.7},{"x":-8.7,"y":21.6},{"x":-3.6,"y":28.5},{"x":-0.3,"y":28.5},{"x":5.4,"y":21.6},{"x":5.4,"y":-5.7},{"x":9,"y":-6},{"x":10.8,"y":-10.8},{"x":1.5,"y":-14.7},{"x":3.3,"y":-26.4}]
+  },
+  {
+    "id": "wood_mandoble", "name": "Mandoble de madera", "sprite": "./assets/sprites/wood_mandoble.png",
+    "scale": 0.3, "density": 0.0021, "restitution": 0.34, "friction": 0.22, "durability": 4,
+    "effect": { "type": "damage", "value": 5 }, "vertices": [{"x":-3.6,"y":-30},{"x":-6.9,"y":-26.4},{"x":-5.4,"y":-14.7},{"x":-12,"y":-12.6},{"x":-14.1,"y":-7.8},{"x":-8.7,"y":-5.7},{"x":-8.7,"y":21.6},{"x":-3.6,"y":28.5},{"x":-0.3,"y":28.5},{"x":5.4,"y":21.6},{"x":5.4,"y":-5.7},{"x":9,"y":-6},{"x":10.8,"y":-10.8},{"x":1.5,"y":-14.7},{"x":3.3,"y":-26.4}]
+  },
+  {
+    "id": "iron_shield", "name": "Escudo de hierro", "sprite": "./assets/sprites/iron_shield.png",
+    "scale": 0.28, "density": 0.003, "restitution": 0.24, "friction": 0.24, "durability": 6,
+    "effect": { "type": "armor", "value": 4 },
+    "vertices": [{"x":-2.52,"y":-29.4},{"x":-26.04,"y":-19.04},{"x":-26.04,"y":-0.84},{"x":-8.96,"y":24.08},{"x":3.92,"y":27.72},{"x":18.2,"y":16.24},{"x":24.64,"y":5.04},{"x":26.88,"y":-19.04}]
+  },
+  {
+    "id": "mana_potion", "name": "Poción de maná", "sprite": "./assets/sprites/mana_potion.png",
+    "scale": 0.27, "density": 0.002, "restitution": 0.48, "friction": 0.12, "durability": 3,
+    "effect": { "type": "heal", "value": 4 },
+    "vertices": [{"x":-10.26,"y":-24.3},{"x":-10.26,"y":-18.09},{"x":-13.23,"y":-17.82},{"x":-10.26,"y":-5.13},{"x":-22.14,"y":4.05},{"x":-22.14,"y":16.2},{"x":-8.1,"y":27.27},{"x":8.37,"y":27.27},{"x":22.14,"y":16.2},{"x":22.14,"y":4.05},{"x":8.64,"y":-9.45},{"x":11.88,"y":-11.34},{"x":8.64,"y":-24.3}]
+  }
 ];
