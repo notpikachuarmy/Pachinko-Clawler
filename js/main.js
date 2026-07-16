@@ -15,12 +15,12 @@ const {
 if (window.decomp) Common.setDecomp(window.decomp);
 
 const CONFIG = Object.freeze({
-  boardWidth: 720,
-  boardHeight: 900,
-  launchAreaHeight: 110,
-  bottomZoneTop: 790,
-  wallThickness: 40,
-  pegRadius: 11,
+  boardWidth: 960,
+  boardHeight: 1160,
+  launchAreaHeight: 120,
+  bottomZoneTop: 1010,
+  wallThickness: 48,
+  pegRadius: 10,
   shakeCooldownMs: 1200,
   enemyTurnDelayMs: 520,
   hazardHitCooldownMs: 650,
@@ -99,7 +99,10 @@ const nextCombatButton = $("#next-combat-button");
 const resultMenuButton = $("#result-menu-button");
 
 const engine = Engine.create({
-  enableSleeping: true,
+  // Dormir cuerpos provocaba que escudos y libros quedasen congelados
+  // entre varios clavos. Con pocos objetos simultáneos es más estable
+  // mantener la simulación despierta.
+  enableSleeping: false,
   gravity: { x: 0, y: 1, scale: 0.001 }
 });
 
@@ -209,6 +212,11 @@ function showGame() {
   gameState.scene = "game";
   menuScreen.hidden = true;
   gameScreen.hidden = false;
+
+  // Algunos navegadores conservan el desplazamiento vertical del menú.
+  // Al reanudar una run esto podía dejar la zona inferior fuera del
+  // encuadre inicial aunque el canvas estuviese renderizado completo.
+  window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
 }
 
 function refreshMenu() {
@@ -294,8 +302,13 @@ function restoreCombatSnapshot(snapshot) {
   gameState.turn = "player";
   gameState.combatOver = false;
   resetTurnPool();
-  createBoard(clone(snapshot.board));
-  addLog("Partida retomada al inicio del último turno guardado.");
+  const restoredBoard = snapshot.board?.version === 2
+    ? clone(snapshot.board)
+    : generateBoardConfiguration(run.round);
+  createBoard(restoredBoard);
+  addLog(snapshot.board?.version === 2
+    ? "Partida retomada al inicio del último turno guardado."
+    : "Partida retomada con el nuevo diseño de tablero.");
   updateUi();
 }
 
@@ -312,6 +325,7 @@ function saveSafePoint() {
     }))),
     enemies: clone(gameState.enemies),
     board: {
+      version: 2,
       slots: clone(gameState.slots),
       hazards: gameState.hazardBodies.map(body => clone(body.plugin.pachinkrawlerHazard.layout))
     }
@@ -377,35 +391,51 @@ function generateBoardConfiguration(round) {
 
   const inner = clone(innerPatterns[Math.floor(Math.random() * innerPatterns.length)]);
   const slots = ["wall", ...inner, "wall"];
+
+  // Los peligros ocupan nodos reales del patrón en vez de superponerse
+  // a una parrilla completa. Así quedan rutas legibles y se evitan
+  // pinzas imposibles entre un peligro y un clavo situado debajo.
   const hazardCount = Math.min(4, 2 + Math.floor((round - 1) / 3));
-  const positions = shuffle([
-    { x: 142, y: 302 }, { x: 354, y: 302 }, { x: 574, y: 302 },
-    { x: 242, y: 446 }, { x: 470, y: 446 },
-    { x: 142, y: 590 }, { x: 354, y: 590 }, { x: 574, y: 590 }
-  ]);
+  const candidates = shuffle(createPegLayout().filter(peg => (
+    peg.row >= 2 &&
+    peg.row <= 7 &&
+    peg.x > 110 &&
+    peg.x < CONFIG.boardWidth - 110
+  )));
   const hazardIds = [...hazardDefinitions.keys()];
   const hazards = [];
 
-  for (let index = 0; index < hazardCount; index += 1) {
+  for (const candidate of candidates) {
+    if (hazards.length >= hazardCount) break;
+    const farEnough = hazards.every(hazard => (
+      Math.hypot(hazard.x - candidate.x, hazard.y - candidate.y) >= 155
+    ));
+    if (!farEnough) continue;
+
     hazards.push({
       instanceId: createId("hazard"),
       definitionId: hazardIds[Math.floor(Math.random() * hazardIds.length)],
-      x: positions[index].x + randomBetween(-16, 16),
-      y: positions[index].y + randomBetween(-10, 10),
-      angle: randomBetween(-0.2, 0.2)
+      x: candidate.x,
+      y: candidate.y,
+      angle: randomBetween(-0.16, 0.16)
     });
   }
 
-  return { slots, hazards };
+  return { version: 2, slots, hazards };
 }
 
 function createBoard(boardConfig) {
   clearBoardBodies();
-  const bodies = [...createWalls(), ...createPegs(), ...createBottomZone(boardConfig.slots)];
+  const bodies = [
+    ...createWalls(),
+    ...createPegs(boardConfig.hazards || []),
+    ...createLowerGuides(),
+    ...createBottomZone(boardConfig.slots || ["wall", "activation", "void", "activation", "wall"])
+  ];
   gameState.boardBodies = bodies;
   Composite.add(engine.world, bodies);
 
-  gameState.hazardBodies = boardConfig.hazards
+  gameState.hazardBodies = (boardConfig.hazards || [])
     .map(layout => createHazardBody(layout))
     .filter(Boolean);
   Composite.add(engine.world, gameState.hazardBodies);
@@ -435,44 +465,94 @@ function createWalls() {
   ];
 }
 
-function createPegs() {
-  const pegs = [];
-  for (let row = 0; row < 8; row += 1) {
-    const offset = row % 2 ? 41 : 0;
-    for (let column = 0; column < 8; column += 1) {
-      const x = 72 + column * 82 + offset;
-      const y = 180 + row * 72;
-      if (x > CONFIG.boardWidth - 45) continue;
-      pegs.push(Bodies.circle(x, y, CONFIG.pegRadius, {
-        isStatic: true,
-        restitution: 0.82,
-        friction: 0.025,
-        label: "peg",
-        render: { fillStyle: CONFIG.colors.peg, strokeStyle: "#77778d", lineWidth: 2 }
-      }));
+function createPegLayout() {
+  // Separación útil de unos 90 px entre bordes. El escudo inicial
+  // mide aproximadamente 83 px y ahora puede atravesar rutas normales.
+  const rows = [
+    [0, 1, 3, 4, 6, 7],
+    [0, 2, 3, 5, 7],
+    [0, 1, 2, 3, 4, 5, 6, 7],
+    [0, 1, 3, 4, 6, 7],
+    [0, 1, 2, 3, 4, 5, 6, 7],
+    [0, 2, 3, 5, 6],
+    [0, 1, 2, 3, 4, 5, 6, 7],
+    [0, 1, 3, 4, 6, 7]
+  ];
+  const layout = [];
+  const spacingX = 112;
+  const spacingY = 104;
+  const startX = 88;
+  const startY = 190;
+
+  rows.forEach((columns, row) => {
+    const offset = row % 2 ? spacingX / 2 : 0;
+    for (const column of columns) {
+      const x = startX + column * spacingX + offset;
+      if (x > CONFIG.boardWidth - 70) continue;
+      layout.push({ x, y: startY + row * spacingY, row, column });
     }
+  });
+
+  return layout;
+}
+
+function createPegs(hazards = []) {
+  const pegs = [];
+  const hazardClearance = 68;
+
+  for (const peg of createPegLayout()) {
+    const replacedByHazard = hazards.some(hazard => (
+      Math.hypot(hazard.x - peg.x, hazard.y - peg.y) < hazardClearance
+    ));
+    if (replacedByHazard) continue;
+
+    pegs.push(Bodies.circle(peg.x, peg.y, CONFIG.pegRadius, {
+      isStatic: true,
+      restitution: 0.84,
+      friction: 0.02,
+      label: "peg",
+      render: { fillStyle: CONFIG.colors.peg, strokeStyle: "#77778d", lineWidth: 2 }
+    }));
   }
   return pegs;
+}
+
+function createLowerGuides() {
+  // Guías laterales cortas: reducen rincones muertos sin convertir
+  // los bordes en una entrada directa a los buzones.
+  const options = {
+    isStatic: true,
+    restitution: 0.72,
+    friction: 0.04,
+    label: "board-guide",
+    render: { fillStyle: CONFIG.colors.bumper, strokeStyle: "#80809c", lineWidth: 2 }
+  };
+  const left = Bodies.rectangle(92, 960, 150, 18, options);
+  const right = Bodies.rectangle(CONFIG.boardWidth - 92, 960, 150, 18, options);
+  Body.setAngle(left, 0.34);
+  Body.setAngle(right, -0.34);
+  return [left, right];
 }
 
 function createBottomZone(types) {
   const slotCount = 5;
   const slotWidth = CONFIG.boardWidth / slotCount;
+  const zoneHeight = CONFIG.boardHeight - CONFIG.bottomZoneTop;
   gameState.slots = types.map((type, index) => ({ type, x: index * slotWidth, width: slotWidth }));
 
   return types.map((type, index) => {
     const center = index * slotWidth + slotWidth / 2;
     if (type === "wall") {
-      return Bodies.rectangle(center, 865, slotWidth - 10, 60, {
+      return Bodies.rectangle(center, CONFIG.bottomZoneTop + zoneHeight * 0.68, slotWidth - 12, 76, {
         isStatic: true,
-        restitution: 0.7,
-        friction: 0.08,
+        restitution: 0.72,
+        friction: 0.07,
         label: "bottom-wall",
         render: { fillStyle: CONFIG.colors.bumper, strokeStyle: "#80809c", lineWidth: 2 }
       });
     }
 
-    return Bodies.rectangle(center, 875, slotWidth - 8, 42, {
+    return Bodies.rectangle(center, CONFIG.bottomZoneTop + zoneHeight * 0.66, slotWidth - 10, 104, {
       isStatic: true,
       isSensor: true,
       label: type === "activation" ? "activation-slot" : "void-slot",
@@ -1150,25 +1230,28 @@ function drawLaunchArea(context) {
 }
 
 function drawBottomSlots(context) {
-  context.font = "700 15px system-ui";
+  const zoneHeight = CONFIG.boardHeight - CONFIG.bottomZoneTop;
+  const labelY = CONFIG.bottomZoneTop + zoneHeight * 0.52;
+  context.font = "700 16px system-ui";
   context.textAlign = "center";
   context.textBaseline = "middle";
 
   for (const slot of gameState.slots) {
     if (slot.type === "activation") {
       context.fillStyle = CONFIG.colors.activation;
-      context.fillRect(slot.x + 4, CONFIG.bottomZoneTop, slot.width - 8, 110);
+      context.fillRect(slot.x + 5, CONFIG.bottomZoneTop, slot.width - 10, zoneHeight);
       context.fillStyle = "#f4fff9";
-      context.fillText("ACTIVAR", slot.x + slot.width / 2, 845);
+      context.fillText("ACTIVAR", slot.x + slot.width / 2, labelY);
     } else if (slot.type === "void") {
       context.fillStyle = CONFIG.colors.void;
-      context.fillRect(slot.x + 4, CONFIG.bottomZoneTop, slot.width - 8, 110);
+      context.fillRect(slot.x + 5, CONFIG.bottomZoneTop, slot.width - 10, zoneHeight);
       context.strokeStyle = "#555568";
-      context.setLineDash([8, 8]);
-      context.strokeRect(slot.x + 8, CONFIG.bottomZoneTop + 4, slot.width - 16, 100);
+      context.lineWidth = 3;
+      context.setLineDash([9, 9]);
+      context.strokeRect(slot.x + 10, CONFIG.bottomZoneTop + 6, slot.width - 20, zoneHeight - 12);
       context.setLineDash([]);
       context.fillStyle = "#a5a5b7";
-      context.fillText("VACÍO", slot.x + slot.width / 2, 845);
+      context.fillText("VACÍO", slot.x + slot.width / 2, labelY);
     }
   }
 }
