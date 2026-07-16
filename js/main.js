@@ -28,6 +28,14 @@ const itemDefinitions = new Map(
   (window.PACHINKRAWLER_ITEMS || []).map((item) => [item.id, item])
 );
 
+const itemImages = new Map();
+
+for (const definition of itemDefinitions.values()) {
+  const image = new Image();
+  image.src = definition.sprite;
+  itemImages.set(definition.id, image);
+}
+
 const gameContainer = document.querySelector("#game-container");
 const resetButton = document.querySelector("#reset-button");
 const shakeButton = document.querySelector("#shake-button");
@@ -145,16 +153,22 @@ function createItemBody(definition, x) {
       }
     },
     render: {
-      fillStyle: "transparent",
-      strokeStyle: "transparent",
-      lineWidth: 0,
-      sprite: {
-        texture: definition.sprite,
-        xScale: definition.scale,
-        yScale: definition.scale
-      }
+      visible: false
     }
   }, true);
+
+  /*
+   * Bodies.fromVertices puede convertir una silueta cóncava en varias
+   * piezas convexas. El renderizador estándar de Matter dibujaría un
+   * sprite por cada pieza, provocando las copias que se veían en pantalla.
+   * Ocultamos tanto el cuerpo padre como todas sus piezas y dibujamos el
+   * sprite una sola vez manualmente en afterRender.
+   */
+  for (const part of body.parts) {
+    part.render.visible = false;
+  }
+
+  body.plugin.pachinkrawler.spriteScale = definition.scale;
 
   return body;
 }
@@ -269,9 +283,35 @@ Events.on(render, "afterRender", () => {
   context.textBaseline = "middle";
   context.fillText("HAZ CLIC AQUÍ PARA SOLTAR UN OBJETO", CONFIG.boardWidth / 2, CONFIG.launchAreaHeight / 2);
 
+  drawItemSprites(context);
   if (gameState.debugHitboxes) drawHitboxes(context);
   context.restore();
 });
+
+function drawItemSprites(context) {
+  context.save();
+
+  for (const item of gameState.activeItems) {
+    const itemData = item.plugin?.pachinkrawler;
+    const definition = itemDefinitions.get(itemData?.itemId);
+    const image = itemImages.get(itemData?.itemId);
+
+    if (!definition || !image || !image.complete || image.naturalWidth === 0) {
+      continue;
+    }
+
+    const width = image.naturalWidth * definition.scale;
+    const height = image.naturalHeight * definition.scale;
+
+    context.save();
+    context.translate(item.position.x, item.position.y);
+    context.rotate(item.angle);
+    context.drawImage(image, -width / 2, -height / 2, width, height);
+    context.restore();
+  }
+
+  context.restore();
+}
 
 function drawHitboxes(context) {
   context.save();
