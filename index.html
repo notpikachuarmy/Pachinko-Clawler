@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Pachinkrawler - prototipo web roguelike de pachinko">
-  <title>Pachinkrawler — Fase 4.2</title>
+  <title>Pachinkrawler — Fase 4.3</title>
   <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
   <main id="app" class="app-shell">
     <section id="menu-screen" class="menu-screen" aria-labelledby="game-title">
       <div class="menu-card">
-        <p class="eyebrow">Prototipo Fase 4.2</p>
+        <p class="eyebrow">Prototipo Fase 4.3</p>
         <h1 id="game-title">Pachinkrawler</h1>
         <p class="menu-copy">
           Combate por turnos, objetos físicos y una mochila que evoluciona durante la run.
@@ -63,7 +63,7 @@
         <aside class="side-panel">
           <section class="next-card">
             <div class="next-copy">
-              <span>Siguiente objeto</span>
+              <span>Siguiente objeto · robo aleatorio</span>
               <strong id="selected-name">Sin objeto</strong>
               <small id="selected-detail">—</small>
             </div>
@@ -95,6 +95,7 @@
               <span>Objetos <strong id="inventory-count">6</strong></span>
             </div>
             <p id="adaptation-summary">Los enemigos se adaptarán si derrotas muchas veces a la misma especie.</p>
+            <p class="hazard-affinity-note"><strong>Afinidades:</strong> Sierra ×2 a madera · Fuego ×2 a metal y papel · Pinchos ×2 a vidrio.</p>
           </section>
 
           <section class="combat-card">
@@ -131,7 +132,7 @@
         </div>
         <button id="close-backpack" class="secondary-button" type="button">Cerrar</button>
       </div>
-      <p>Selecciona una instancia. La durabilidad se restaura al inicio de cada turno. Pasa el cursor o enfócala para ver sus datos.</p>
+      <p>El siguiente objeto se roba al azar entre las instancias disponibles. La mochila es informativa: pasa el cursor o enfoca un icono para ver sus datos.</p>
       <div id="inventory-list" class="inventory-list"></div>
     </div>
   </div>

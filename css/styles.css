@@ -358,3 +358,11 @@ button:not(:disabled):hover { filter: brightness(1.08); transform: translateY(-1
   .next-card { grid-template-columns: 1fr 74px; }
   .next-card img { width: 70px; height: 70px; }
 }
+
+
+/* Fase 4.3: la mochila informa; el orden de lanzamiento se roba al azar. */
+.inventory-item.is-readonly { cursor: help; }
+.inventory-item.is-readonly:hover { transform: none; }
+
+.hazard-affinity-note { margin-bottom: 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
+.hazard-affinity-note strong { color: var(--text); }

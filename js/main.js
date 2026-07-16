@@ -15,6 +15,7 @@ const {
 if (window.decomp) Common.setDecomp(window.decomp);
 
 const CONFIG = Object.freeze({
+  boardVersion: 4,
   boardWidth: 960,
   boardHeight: 1500,
   launchAreaHeight: 120,
@@ -136,6 +137,7 @@ const gameState = {
   hazardBodies: [],
   slots: [],
   selectedInstanceId: null,
+  turnDrawPile: [],
   nextPhysicsId: 1,
   debugHitboxes: false,
   shakeReady: true,
@@ -263,7 +265,7 @@ function continueSavedRun() {
     gameState.enemies = [];
     gameState.turn = "ended";
     gameState.combatOver = true;
-    createBoard(generateBoardConfiguration(saved.round));
+    createBoard(generateBoardConfiguration(saved.round, saved.lastSlotSignature));
     updateUi();
     showVictoryResult(saved.lastResult, true);
     return;
@@ -313,8 +315,10 @@ function startCombat() {
   gameState.turn = "player";
   gameState.combatOver = false;
   resetTurnPool();
-  createBoard(generateBoardConfiguration(run.round));
-  addLog(`Ronda ${run.round}: ${formationDescription(gameState.enemies)}.`);
+  const boardConfig = generateBoardConfiguration(run.round, run.lastSlotSignature);
+  run.lastSlotSignature = boardConfig.slots.slice(1, -1).join("|");
+  createBoard(boardConfig);
+  addLog(`Ronda ${run.round}: ${formationDescription(gameState.enemies)}. La zona inferior se ha reorganizado.`);
   updateUi();
   saveSafePoint();
 }
@@ -330,12 +334,15 @@ function restoreCombatSnapshot(snapshot) {
   gameState.enemies = clone(snapshot.enemies);
   gameState.turn = "player";
   gameState.combatOver = false;
-  resetTurnPool();
-  const restoredBoard = snapshot.board?.version === 3
+  resetTurnPool(snapshot.drawOrder);
+  const restoredBoard = snapshot.board?.version === CONFIG.boardVersion
     ? clone(snapshot.board)
-    : generateBoardConfiguration(run.round);
+    : generateBoardConfiguration(run.round, run.lastSlotSignature);
+  if (snapshot.board?.version !== CONFIG.boardVersion) {
+    run.lastSlotSignature = restoredBoard.slots.slice(1, -1).join("|");
+  }
   createBoard(restoredBoard);
-  addLog(snapshot.board?.version === 3
+  addLog(snapshot.board?.version === CONFIG.boardVersion
     ? "Partida retomada al inicio del último turno guardado."
     : "Partida retomada con el tablero profundo actualizado.");
   updateUi();
@@ -353,8 +360,9 @@ function saveSafePoint() {
       usedThisTurn: false
     }))),
     enemies: clone(gameState.enemies),
+    drawOrder: clone(gameState.turnDrawPile),
     board: {
-      version: 3,
+      version: CONFIG.boardVersion,
       slots: clone(gameState.slots),
       hazards: gameState.hazardBodies.map(body => clone(body.plugin.pachinkrawlerHazard.layout))
     }
@@ -408,17 +416,27 @@ function formationDescription(enemies) {
   return `aparecen ${enemies.length} enemigos`;
 }
 
-function generateBoardConfiguration(round) {
-  const innerPatterns = [
-    ["activation", "void", "activation"],
-    ["activation", "wall", "void"],
-    ["void", "activation", "wall"],
-    ["wall", "activation", "void"],
-    ["void", "wall", "activation"],
-    ["activation", "void", "wall"]
+function generateBoardConfiguration(round, previousSlotSignature = "") {
+  // En la mayoría de combates las tres ranuras centrales contienen
+  // exactamente una activación, un vacío y una pared. En una minoría
+  // aparecen composiciones especiales, siempre con al menos una salida
+  // de activación y riesgo real.
+  const standardPattern = ["activation", "void", "wall"];
+  const rarePatterns = [
+    ["activation", "activation", "void"],
+    ["activation", "activation", "wall"],
+    ["activation", "void", "void"],
+    ["activation", "wall", "wall"]
   ];
 
-  const inner = clone(innerPatterns[Math.floor(Math.random() * innerPatterns.length)]);
+  let inner = [];
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const base = Math.random() < 0.82
+      ? standardPattern
+      : rarePatterns[Math.floor(Math.random() * rarePatterns.length)];
+    inner = shuffle(base);
+    if (inner.join("|") !== previousSlotSignature) break;
+  }
   const slots = ["wall", ...inner, "wall"];
 
   // Los peligros ocupan nodos reales del patrón en vez de superponerse
@@ -450,7 +468,7 @@ function generateBoardConfiguration(round) {
     });
   }
 
-  return { version: 3, slots, hazards };
+  return { version: CONFIG.boardVersion, slots, hazards };
 }
 
 function createBoard(boardConfig) {
@@ -619,7 +637,7 @@ function createHazardBody(layout) {
   return body;
 }
 
-function resetTurnPool() {
+function resetTurnPool(savedDrawOrder = null) {
   // La durabilidad es un recurso del turno, no de todo el combate.
   // Al comenzar un nuevo turno cada instancia vuelve a su valor base,
   // incluso si quedó rota durante el turno anterior.
@@ -629,7 +647,16 @@ function resetTurnPool() {
     instance.broken = false;
     instance.usedThisTurn = false;
   }
-  selectRandomRemainingItem();
+
+  const availableIds = gameState.run.inventory.map(instance => instance.instanceId);
+  const restored = Array.isArray(savedDrawOrder)
+    ? savedDrawOrder.filter(id => availableIds.includes(id))
+    : [];
+  const missing = availableIds.filter(id => !restored.includes(id));
+  gameState.turnDrawPile = restored.length
+    ? [...restored, ...shuffle(missing)]
+    : shuffle(availableIds);
+  selectNextDrawnItem();
 }
 
 function remainingItems() {
@@ -648,19 +675,22 @@ function findInventoryInstance(instanceId) {
   return gameState.run?.inventory.find(instance => instance.instanceId === instanceId) || null;
 }
 
-function selectRandomRemainingItem() {
-  const remaining = remainingItems();
-  gameState.selectedInstanceId = remaining.length
-    ? remaining[Math.floor(Math.random() * remaining.length)].instanceId
-    : null;
+function selectNextDrawnItem() {
+  gameState.turnDrawPile = gameState.turnDrawPile.filter(instanceId => {
+    const instance = findInventoryInstance(instanceId);
+    return Boolean(instance && !instance.broken && !instance.usedThisTurn);
+  });
+  gameState.selectedInstanceId = gameState.turnDrawPile[0] || null;
 }
 
-function selectInventoryInstance(instanceId) {
-  const instance = findInventoryInstance(instanceId);
-  if (!instance || instance.broken || instance.usedThisTurn || gameState.turn !== "player" || gameState.combatOver) return;
-  gameState.selectedInstanceId = instance.instanceId;
-  closeBackpackModal();
-  updateUi();
+function advanceTurnDraw() {
+  const usedId = gameState.selectedInstanceId;
+  gameState.turnDrawPile = gameState.turnDrawPile.filter(id => id !== usedId);
+  selectNextDrawnItem();
+}
+
+function selectInventoryInstance() {
+  addLog("La mochila es informativa: el siguiente objeto se roba al azar al comenzar el turno.");
 }
 
 function createItemBody(definition, inventoryInstance, x) {
@@ -748,7 +778,7 @@ function dropItem(x) {
   gameState.activeItems.add(item);
   Composite.add(engine.world, item);
 
-  selectRandomRemainingItem();
+  advanceTurnDraw();
   updateUi();
 }
 
@@ -784,16 +814,22 @@ function damageItemFromHazard(item, hazardBody) {
   const hazardDefinition = hazardDefinitions.get(hazardData.definitionId);
   if (!definition || !instance || !hazardDefinition) return;
 
-  instance.currentDurability = Math.max(0, instance.currentDurability - hazardDefinition.damage);
+  const material = definition.material || "mixed";
+  const multiplier = hazardDefinition.materialMultipliers?.[material] ?? 1;
+  const durabilityDamage = Math.max(1, Math.round(hazardDefinition.damage * multiplier));
+  instance.currentDurability = Math.max(0, instance.currentDurability - durabilityDamage);
   data.flashUntil = Date.now() + 220;
+  const weaknessText = multiplier > 1
+    ? ` Vulnerabilidad ${materialName(material)} ×${multiplier}.`
+    : "";
 
   if (instance.currentDurability <= 0) {
     instance.broken = true;
     data.resolved = true;
     removeItem(root, false);
-    addLog(`${definition.name} se rompió al tocar ${hazardDefinition.name}. Volverá con durabilidad completa en tu próximo turno.`);
+    addLog(`${definition.name} se rompió al tocar ${hazardDefinition.name}.${weaknessText} Volverá con durabilidad completa en tu próximo turno.`);
   } else {
-    addLog(`${hazardDefinition.name} dañó ${definition.name}: ${instance.currentDurability}/${definition.durability} de durabilidad.`);
+    addLog(`${hazardDefinition.name} dañó ${definition.name} por ${durabilityDamage}: ${instance.currentDurability}/${definition.durability}.${weaknessText}`);
     Sleeping.set(root, false);
   }
   updateUi();
@@ -1196,16 +1232,27 @@ function renderInventory() {
     button.classList.toggle("is-selected", instance.instanceId === gameState.selectedInstanceId && !instance.usedThisTurn && !instance.broken);
     button.classList.toggle("is-used", instance.usedThisTurn);
     button.classList.toggle("is-broken", instance.broken);
-    button.disabled = instance.usedThisTurn || instance.broken || gameState.turn !== "player" || gameState.combatOver;
-    button.setAttribute("aria-label", `${definition.name}. ${effectText(definition)}. Durabilidad ${instance.currentDurability} de ${definition.durability}.`);
-    button.dataset.tooltip = `${definition.name} · ${effectText(definition)} · Durabilidad ${instance.currentDurability}/${definition.durability}. ${definition.description}`;
+    button.classList.add("is-readonly");
+    button.setAttribute("aria-disabled", "true");
+    button.setAttribute("aria-label", `${definition.name}. ${effectText(definition)}. Material ${materialName(definition.material)}. Durabilidad ${instance.currentDurability} de ${definition.durability}.`);
+    button.dataset.tooltip = `${definition.name} · ${effectText(definition)} · ${materialName(definition.material)} · Durabilidad ${instance.currentDurability}/${definition.durability}. ${definition.description}`;
     button.innerHTML = `
       <img src="${definition.sprite}" alt="">
       <span class="durability-pip">${instance.currentDurability}/${definition.durability}</span>
     `;
-    button.addEventListener("click", () => selectInventoryInstance(instance.instanceId));
     inventoryList.append(button);
   }
+}
+
+function materialName(material) {
+  const labels = {
+    wood: "Madera",
+    metal: "Metal",
+    glass: "Vidrio",
+    paper: "Papel",
+    mixed: "Mixto"
+  };
+  return labels[material] || "Material desconocido";
 }
 
 function effectText(definition) {
@@ -1386,7 +1433,7 @@ function updateUi() {
   poolCountElement.textContent = remainingItems().length;
   selectedNameElement.textContent = definition?.name || "Sin objetos";
   selectedDetailElement.textContent = definition && selectedInstance
-    ? `${effectText(definition)} · Durabilidad ${selectedInstance.currentDurability}/${definition.durability}`
+    ? `${effectText(definition)} · ${materialName(definition.material)} · Durabilidad ${selectedInstance.currentDurability}/${definition.durability}`
     : "Pasa el turno cuando hayas terminado.";
   selectedImageElement.hidden = !definition;
   if (definition) {

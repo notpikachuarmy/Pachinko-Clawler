@@ -10,6 +10,7 @@ window.PACHINKRAWLER_HAZARDS = [
     renderWidth: 70,
     renderHeight: 78,
     damage: 1,
+    materialMultipliers: { metal: 2, paper: 2 },
     isSensor: true
   },
   {
@@ -21,6 +22,7 @@ window.PACHINKRAWLER_HAZARDS = [
     renderWidth: 72,
     renderHeight: 72,
     damage: 1,
+    materialMultipliers: { wood: 2 },
     isSensor: false,
     restitution: 0.82
   },
@@ -34,6 +36,7 @@ window.PACHINKRAWLER_HAZARDS = [
     renderWidth: 86,
     renderHeight: 56,
     damage: 1,
+    materialMultipliers: { glass: 2 },
     isSensor: false,
     restitution: 0.34
   }

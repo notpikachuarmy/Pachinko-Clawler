@@ -75,7 +75,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 3.71,
         "y": -37.27
       }
-    ]
+    ],
+    "material": "wood"
   },
   {
     "id": "wood_shield",
@@ -138,7 +139,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 9.71,
         "y": -41.85
       }
-    ]
+    ],
+    "material": "wood"
   },
   {
     "id": "hp_potion",
@@ -209,7 +211,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 8.73,
         "y": -31.29
       }
-    ]
+    ],
+    "material": "glass"
   },
   {
     "id": "mana_potion",
@@ -284,7 +287,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 10.65,
         "y": -34.95
       }
-    ]
+    ],
+    "material": "glass"
   },
   {
     "id": "iron_sword",
@@ -368,7 +372,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 7.85,
         "y": -41.59
       }
-    ]
+    ],
+    "material": "metal"
   },
   {
     "id": "iron_shield",
@@ -423,7 +428,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 41.5,
         "y": -25.68
       }
-    ]
+    ],
+    "material": "metal"
   },
   {
     "id": "wood_dage",
@@ -491,7 +497,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 3.94,
         "y": -18.04
       }
-    ]
+    ],
+    "material": "wood"
   },
   {
     "id": "wood_mandoble",
@@ -568,7 +575,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 7.44,
         "y": -50.32
       }
-    ]
+    ],
+    "material": "wood"
   },
   {
     "id": "wood_estoque",
@@ -621,7 +629,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 1.94,
         "y": -1.21
       }
-    ]
+    ],
+    "material": "wood"
   },
   {
     "id": "wood_katana",
@@ -678,7 +687,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 1.47,
         "y": -8.03
       }
-    ]
+    ],
+    "material": "wood"
   },
   {
     "id": "wood_machete",
@@ -740,7 +750,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 2.49,
         "y": -13.72
       }
-    ]
+    ],
+    "material": "wood"
   },
   {
     "id": "wood_boken",
@@ -805,7 +816,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 2.89,
         "y": -45.13
       }
-    ]
+    ],
+    "material": "wood"
   },
   {
     "id": "fireball_book",
@@ -875,7 +887,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 21.63,
         "y": -34.8
       }
-    ]
+    ],
+    "material": "paper"
   },
   {
     "id": "ice_book",
@@ -945,7 +958,8 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 22.92,
         "y": -33.25
       }
-    ]
+    ],
+    "material": "paper"
   },
   {
     "id": "heal_book",
@@ -1005,6 +1019,7 @@ window.PACHINKRAWLER_ITEMS = [
         "x": 22.74,
         "y": -33.46
       }
-    ]
+    ],
+    "material": "paper"
   }
 ];
