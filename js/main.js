@@ -1,6 +1,17 @@
 "use strict";
 
-const { Engine, Render, Runner, Bodies, Body, Composite, Events, Common, Sleeping } = Matter;
+const {
+  Engine,
+  Render,
+  Runner,
+  Bodies,
+  Body,
+  Composite,
+  Events,
+  Common,
+  Sleeping
+} = Matter;
+
 if (window.decomp) Common.setDecomp(window.decomp);
 
 const CONFIG = Object.freeze({
@@ -11,8 +22,9 @@ const CONFIG = Object.freeze({
   wallThickness: 40,
   pegRadius: 11,
   shakeCooldownMs: 1200,
-  enemyAttack: 3,
-  enemyTurnDelayMs: 450,
+  enemyTurnDelayMs: 520,
+  hazardHitCooldownMs: 650,
+  maxAdaptationLevel: 5,
   colors: {
     background: "#171724",
     launchArea: "#24243a",
@@ -32,24 +44,32 @@ const STARTING_LOADOUT = Object.freeze([
 ]);
 
 const itemDefinitions = new Map((window.PACHINKRAWLER_ITEMS || []).map(item => [item.id, item]));
-const itemImages = new Map();
-for (const definition of itemDefinitions.values()) {
-  const image = new Image();
-  image.src = definition.sprite;
-  itemImages.set(definition.id, image);
-}
+const enemyDefinitions = new Map((window.PACHINKRAWLER_ENEMIES || []).map(enemy => [enemy.id, enemy]));
+const hazardDefinitions = new Map((window.PACHINKRAWLER_HAZARDS || []).map(hazard => [hazard.id, hazard]));
+const statusDefinitions = window.PACHINKRAWLER_STATUSES || {};
+const Storage = window.PachinkrawlerStorage;
+
+const itemImages = preloadImages(itemDefinitions, definition => definition.sprite);
+const hazardImages = preloadImages(hazardDefinitions, definition => definition.sprite);
 
 const $ = selector => document.querySelector(selector);
+const menuScreen = $("#menu-screen");
+const gameScreen = $("#game-screen");
+const newRunButton = $("#new-run-button");
+const continueButton = $("#continue-button");
+const testRunButton = $("#test-run-button");
+const deleteSaveButton = $("#delete-save-button");
+const continueSummary = $("#continue-summary");
+const menuButton = $("#menu-button");
 const gameContainer = $("#game-container");
 const shakeButton = $("#shake-button");
 const debugButton = $("#debug-button");
 const passButton = $("#pass-button");
 const backpackButton = $("#backpack-button");
-const closeBackpack = $("#close-backpack");
+const closeBackpackButton = $("#close-backpack");
 const backpackModal = $("#backpack-modal");
 const inventoryList = $("#inventory-list");
 const statusElement = $("#status");
-const enemyHpElement = $("#enemy-hp");
 const armorElement = $("#player-armor");
 const healthElement = $("#player-health");
 const healthFillElement = $("#player-health-fill");
@@ -58,8 +78,25 @@ const manaFillElement = $("#player-mana-fill");
 const logElement = $("#event-log");
 const poolCountElement = $("#pool-count");
 const selectedNameElement = $("#selected-name");
+const selectedDetailElement = $("#selected-detail");
 const selectedImageElement = $("#selected-image");
 const turnLabelElement = $("#turn-label");
+const roundLabelElement = $("#round-label");
+const runModeLabel = $("#run-mode-label");
+const goldValueElement = $("#gold-value");
+const inventoryCountElement = $("#inventory-count");
+const adaptationSummaryElement = $("#adaptation-summary");
+const formationLabelElement = $("#formation-label");
+const enemyFormationElement = $("#enemy-formation");
+const playerCombatantElement = $("#player-combatant");
+const playerStatusesElement = $("#player-statuses");
+const resultModal = $("#result-modal");
+const resultEyebrow = $("#result-eyebrow");
+const resultTitle = $("#result-title");
+const resultMessage = $("#result-message");
+const resultDetails = $("#result-details");
+const nextCombatButton = $("#next-combat-button");
+const resultMenuButton = $("#result-menu-button");
 
 const engine = Engine.create({
   enableSleeping: true,
@@ -79,41 +116,307 @@ const render = Render.create({
 });
 
 const runner = Runner.create();
-
-const gameState = {
-  activeItems: new Set(),
-  hand: [],
-  selectedInstanceId: null,
-  nextPhysicsId: 1,
-  nextInventoryId: 1,
-  debugHitboxes: false,
-  shakeReady: true,
-  boardBodies: [],
-  slots: [],
-  enemyHp: 30,
-  enemyMaxHp: 30,
-  playerArmor: 0,
-  playerHealth: 20,
-  maxHealth: 20,
-  playerMana: 0,
-  maxMana: 10,
-  turn: "player",
-  combatOver: false
-};
-
 Render.run(render);
 Runner.run(runner, engine);
 
-function createBoard() {
+const gameState = {
+  run: null,
+  scene: "menu",
+  turn: "player",
+  combatOver: false,
+  enemies: [],
+  activeItems: new Set(),
+  boardBodies: [],
+  hazardBodies: [],
+  slots: [],
+  selectedInstanceId: null,
+  nextPhysicsId: 1,
+  debugHitboxes: false,
+  shakeReady: true,
+  resultAction: "next",
+  playerFlashUntil: 0
+};
+
+function preloadImages(definitions, getSource) {
+  const images = new Map();
+  for (const definition of definitions.values()) {
+    const image = new Image();
+    image.src = getSource(definition);
+    images.set(definition.id, image);
+  }
+  return images;
+}
+
+function createId(prefix) {
+  if (window.crypto?.randomUUID) return `${prefix}-${window.crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createRun(isTestMode = false) {
+  const itemIds = isTestMode ? [...itemDefinitions.keys()] : [...STARTING_LOADOUT];
+  const maxHealth = isTestMode ? 30 : 20;
+  const maxMana = isTestMode ? 20 : 10;
+
+  return {
+    version: Storage.SAVE_VERSION,
+    id: createId("run"),
+    isTestMode,
+    phase: "combat",
+    round: 1,
+    gold: 0,
+    player: {
+      hp: maxHealth,
+      maxHp: maxHealth,
+      mp: maxMana,
+      maxMp: maxMana,
+      armor: 0
+    },
+    inventory: itemIds
+      .filter(itemId => itemDefinitions.has(itemId))
+      .map(itemId => createInventoryInstance(itemId)),
+    adaptation: {},
+    combatSnapshot: null,
+    lastResult: null
+  };
+}
+
+function createInventoryInstance(itemId) {
+  const definition = itemDefinitions.get(itemId);
+  return {
+    instanceId: createId("item"),
+    itemId,
+    currentDurability: definition?.durability ?? 1,
+    broken: false,
+    usedThisTurn: false
+  };
+}
+
+function showMenu() {
+  gameState.scene = "menu";
+  clearActiveItems();
+  closeBackpackModal();
+  resultModal.hidden = true;
+  gameScreen.hidden = true;
+  menuScreen.hidden = false;
+  refreshMenu();
+}
+
+function showGame() {
+  gameState.scene = "game";
+  menuScreen.hidden = true;
+  gameScreen.hidden = false;
+}
+
+function refreshMenu() {
+  const saved = Storage.load();
+  continueButton.disabled = !saved;
+  deleteSaveButton.disabled = !saved;
+
+  if (!saved) {
+    continueSummary.textContent = "No hay una run guardada.";
+    return;
+  }
+
+  const phase = saved.phase === "transition" ? "entre combates" : "en combate";
+  continueSummary.textContent = `Run guardada · Ronda ${saved.round} · ${phase} · ${saved.inventory.length} objetos`;
+}
+
+function beginNewRun(isTestMode = false) {
+  if (!isTestMode && Storage.hasSave()) {
+    const confirmed = window.confirm("Iniciar una nueva run sustituirá la partida guardada. ¿Continuar?");
+    if (!confirmed) return;
+  }
+
+  gameState.run = createRun(isTestMode);
+  showGame();
+  startCombat();
+}
+
+function continueSavedRun() {
+  const saved = Storage.load();
+  if (!saved) {
+    refreshMenu();
+    return;
+  }
+
+  gameState.run = saved;
+  showGame();
+
+  if (saved.phase === "transition") {
+    gameState.enemies = [];
+    gameState.turn = "ended";
+    gameState.combatOver = true;
+    createBoard(generateBoardConfiguration(saved.round));
+    updateUi();
+    showVictoryResult(saved.lastResult, true);
+    return;
+  }
+
+  if (!saved.combatSnapshot) {
+    startCombat();
+    return;
+  }
+
+  restoreCombatSnapshot(saved.combatSnapshot);
+}
+
+function startCombat() {
+  clearActiveItems();
+  closeBackpackModal();
+  resultModal.hidden = true;
+
+  const run = gameState.run;
+  run.phase = "combat";
+  run.player.armor = 0;
+  gameState.enemies = generateEnemyFormation(run.round);
+  gameState.turn = "player";
+  gameState.combatOver = false;
+  resetTurnPool();
+  createBoard(generateBoardConfiguration(run.round));
+  addLog(`Ronda ${run.round}: ${formationDescription(gameState.enemies)}.`);
+  updateUi();
+  saveSafePoint();
+}
+
+function restoreCombatSnapshot(snapshot) {
+  clearActiveItems();
+  closeBackpackModal();
+  resultModal.hidden = true;
+
+  const run = gameState.run;
+  run.player = clone(snapshot.player);
+  run.inventory = clone(snapshot.inventory);
+  gameState.enemies = clone(snapshot.enemies);
+  gameState.turn = "player";
+  gameState.combatOver = false;
+  resetTurnPool();
+  createBoard(clone(snapshot.board));
+  addLog("Partida retomada al inicio del último turno guardado.");
+  updateUi();
+}
+
+function saveSafePoint() {
+  const run = gameState.run;
+  if (!run || run.isTestMode || gameState.turn !== "player" || gameState.combatOver) return;
+
+  run.phase = "combat";
+  run.combatSnapshot = {
+    player: clone(run.player),
+    inventory: clone(run.inventory.map(instance => ({
+      ...instance,
+      usedThisTurn: false
+    }))),
+    enemies: clone(gameState.enemies),
+    board: {
+      slots: clone(gameState.slots),
+      hazards: gameState.hazardBodies.map(body => clone(body.plugin.pachinkrawlerHazard.layout))
+    }
+  };
+  Storage.save(run);
+}
+
+function generateEnemyFormation(round) {
+  if (round === 1) return [createEnemyState(enemyDefinitions.get("slime_green"), 0, round)];
+
+  const count = round < 4 ? 2 : 3;
+  const pool = [...enemyDefinitions.values()];
+  const formation = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const definition = weightedChoice(pool, enemy => enemy.weight || 1);
+    formation.push(createEnemyState(definition, index, round));
+  }
+
+  return formation;
+}
+
+function createEnemyState(definition, index, round) {
+  const defeated = gameState.run.adaptation[definition.id] || 0;
+  const adaptationLevel = Math.min(CONFIG.maxAdaptationLevel, Math.floor(defeated / 3));
+  const roundHpScale = 1 + Math.max(0, round - 1) * 0.035;
+  const adaptationHpScale = 1 + adaptationLevel * 0.12;
+  const maxHp = Math.max(1, Math.round(definition.maxHp * roundHpScale * adaptationHpScale));
+  const attack = definition.attack + Math.floor((round - 1) / 4) + Math.ceil(adaptationLevel / 2);
+  const armor = definition.armor + Math.floor(adaptationLevel / 2);
+
+  return {
+    combatId: createId(`enemy-${index}`),
+    definitionId: definition.id,
+    name: definition.name,
+    sprite: definition.sprite,
+    maxHp,
+    hp: maxHp,
+    attack,
+    armor,
+    maxArmor: armor,
+    adaptationLevel,
+    statuses: {},
+    defeatCounted: false,
+    flashUntil: 0
+  };
+}
+
+function formationDescription(enemies) {
+  if (enemies.length === 1) return `aparece ${enemies[0].name}`;
+  return `aparecen ${enemies.length} enemigos`;
+}
+
+function generateBoardConfiguration(round) {
+  const innerPatterns = [
+    ["activation", "void", "activation"],
+    ["activation", "wall", "void"],
+    ["void", "activation", "wall"],
+    ["wall", "activation", "void"],
+    ["void", "wall", "activation"],
+    ["activation", "void", "wall"]
+  ];
+
+  const inner = clone(innerPatterns[Math.floor(Math.random() * innerPatterns.length)]);
+  const slots = ["wall", ...inner, "wall"];
+  const hazardCount = Math.min(4, 2 + Math.floor((round - 1) / 3));
+  const positions = shuffle([
+    { x: 142, y: 302 }, { x: 354, y: 302 }, { x: 574, y: 302 },
+    { x: 242, y: 446 }, { x: 470, y: 446 },
+    { x: 142, y: 590 }, { x: 354, y: 590 }, { x: 574, y: 590 }
+  ]);
+  const hazardIds = [...hazardDefinitions.keys()];
+  const hazards = [];
+
+  for (let index = 0; index < hazardCount; index += 1) {
+    hazards.push({
+      instanceId: createId("hazard"),
+      definitionId: hazardIds[Math.floor(Math.random() * hazardIds.length)],
+      x: positions[index].x + randomBetween(-16, 16),
+      y: positions[index].y + randomBetween(-10, 10),
+      angle: randomBetween(-0.2, 0.2)
+    });
+  }
+
+  return { slots, hazards };
+}
+
+function createBoard(boardConfig) {
   clearBoardBodies();
-  const bodies = [...createWalls(), ...createPegs(), ...createBottomZone()];
+  const bodies = [...createWalls(), ...createPegs(), ...createBottomZone(boardConfig.slots)];
   gameState.boardBodies = bodies;
   Composite.add(engine.world, bodies);
+
+  gameState.hazardBodies = boardConfig.hazards
+    .map(layout => createHazardBody(layout))
+    .filter(Boolean);
+  Composite.add(engine.world, gameState.hazardBodies);
 }
 
 function clearBoardBodies() {
   for (const body of gameState.boardBodies) Composite.remove(engine.world, body);
+  for (const body of gameState.hazardBodies) Composite.remove(engine.world, body);
   gameState.boardBodies = [];
+  gameState.hazardBodies = [];
+  gameState.slots = [];
 }
 
 function createWalls() {
@@ -136,8 +439,8 @@ function createPegs() {
   const pegs = [];
   for (let row = 0; row < 8; row += 1) {
     const offset = row % 2 ? 41 : 0;
-    for (let col = 0; col < 8; col += 1) {
-      const x = 72 + col * 82 + offset;
+    for (let column = 0; column < 8; column += 1) {
+      const x = 72 + column * 82 + offset;
       const y = 180 + row * 72;
       if (x > CONFIG.boardWidth - 45) continue;
       pegs.push(Bodies.circle(x, y, CONFIG.pegRadius, {
@@ -152,54 +455,79 @@ function createPegs() {
   return pegs;
 }
 
-function createBottomZone() {
+function createBottomZone(types) {
   const slotCount = 5;
   const slotWidth = CONFIG.boardWidth / slotCount;
-  const types = shuffle(["activation", "wall", "activation", "void", "wall"]);
   gameState.slots = types.map((type, index) => ({ type, x: index * slotWidth, width: slotWidth }));
 
-  const bodies = [];
-  for (let index = 0; index < slotCount; index += 1) {
-    const type = types[index];
+  return types.map((type, index) => {
     const center = index * slotWidth + slotWidth / 2;
-
     if (type === "wall") {
-      bodies.push(Bodies.rectangle(center, 865, slotWidth - 10, 60, {
+      return Bodies.rectangle(center, 865, slotWidth - 10, 60, {
         isStatic: true,
         restitution: 0.7,
         friction: 0.08,
         label: "bottom-wall",
         render: { fillStyle: CONFIG.colors.bumper, strokeStyle: "#80809c", lineWidth: 2 }
-      }));
-    } else {
-      bodies.push(Bodies.rectangle(center, 875, slotWidth - 8, 42, {
-        isStatic: true,
-        isSensor: true,
-        label: type === "activation" ? "activation-slot" : "void-slot",
-        render: { visible: false }
-      }));
+      });
     }
-  }
-  return bodies;
+
+    return Bodies.rectangle(center, 875, slotWidth - 8, 42, {
+      isStatic: true,
+      isSensor: true,
+      label: type === "activation" ? "activation-slot" : "void-slot",
+      render: { visible: false }
+    });
+  });
 }
 
-function buildHand() {
-  gameState.hand = STARTING_LOADOUT
-    .filter(itemId => itemDefinitions.has(itemId))
-    .map(itemId => ({
-      instanceId: `inventory-${gameState.nextInventoryId++}`,
-      itemId,
-      consumed: false
-    }));
+function createHazardBody(layout) {
+  const definition = hazardDefinitions.get(layout.definitionId);
+  if (!definition) return null;
+
+  const options = {
+    isStatic: true,
+    isSensor: Boolean(definition.isSensor),
+    restitution: definition.restitution ?? 0.5,
+    friction: 0.05,
+    label: "hazard",
+    render: { visible: false },
+    plugin: {
+      pachinkrawlerHazard: {
+        definitionId: definition.id,
+        layout: clone(layout)
+      }
+    }
+  };
+
+  const body = definition.shape === "rectangle"
+    ? Bodies.rectangle(layout.x, layout.y, definition.width, definition.height, options)
+    : Bodies.circle(layout.x, layout.y, definition.radius, options);
+  Body.setAngle(body, layout.angle || 0);
+  return body;
+}
+
+function resetTurnPool() {
+  for (const instance of gameState.run.inventory) {
+    instance.usedThisTurn = false;
+  }
   selectRandomRemainingItem();
 }
 
 function remainingItems() {
-  return gameState.hand.filter(instance => !instance.consumed);
+  return gameState.run?.inventory.filter(instance => !instance.broken && !instance.usedThisTurn) || [];
 }
 
 function getSelectedInstance() {
-  return gameState.hand.find(instance => instance.instanceId === gameState.selectedInstanceId && !instance.consumed) || null;
+  return gameState.run?.inventory.find(instance => (
+    instance.instanceId === gameState.selectedInstanceId &&
+    !instance.broken &&
+    !instance.usedThisTurn
+  )) || null;
+}
+
+function findInventoryInstance(instanceId) {
+  return gameState.run?.inventory.find(instance => instance.instanceId === instanceId) || null;
 }
 
 function selectRandomRemainingItem() {
@@ -210,18 +538,19 @@ function selectRandomRemainingItem() {
 }
 
 function selectInventoryInstance(instanceId) {
-  const instance = gameState.hand.find(entry => entry.instanceId === instanceId && !entry.consumed);
-  if (!instance || gameState.turn !== "player" || gameState.combatOver) return;
+  const instance = findInventoryInstance(instanceId);
+  if (!instance || instance.broken || instance.usedThisTurn || gameState.turn !== "player" || gameState.combatOver) return;
   gameState.selectedInstanceId = instance.instanceId;
   closeBackpackModal();
   updateUi();
 }
 
 function createItemBody(definition, inventoryInstance, x) {
-  const body = Bodies.fromVertices(
+  const vertices = definition.vertices.map(vertex => ({ x: vertex.x, y: vertex.y }));
+  let body = Bodies.fromVertices(
     x,
     58,
-    [definition.vertices.map(vertex => ({ x: vertex.x, y: vertex.y }))],
+    [vertices],
     {
       label: "player-item",
       restitution: definition.restitution,
@@ -234,7 +563,9 @@ function createItemBody(definition, inventoryInstance, x) {
           physicsId: gameState.nextPhysicsId,
           inventoryInstanceId: inventoryInstance.instanceId,
           itemId: definition.id,
-          resolved: false
+          resolved: false,
+          hazardHits: {},
+          flashUntil: 0
         }
       },
       render: { visible: false }
@@ -242,7 +573,28 @@ function createItemBody(definition, inventoryInstance, x) {
     true
   );
 
+  if (!body) {
+    const xs = vertices.map(vertex => vertex.x);
+    const ys = vertices.map(vertex => vertex.y);
+    body = Bodies.rectangle(
+      x,
+      58,
+      Math.max(12, Math.max(...xs) - Math.min(...xs)),
+      Math.max(24, Math.max(...ys) - Math.min(...ys)),
+      { render: { visible: false } }
+    );
+  }
+
   body.label = "player-item";
+  body.plugin.pachinkrawler = body.plugin.pachinkrawler || {
+    physicsId: gameState.nextPhysicsId,
+    inventoryInstanceId: inventoryInstance.instanceId,
+    itemId: definition.id,
+    resolved: false,
+    hazardHits: {},
+    flashUntil: 0
+  };
+
   for (const part of body.parts) {
     part.render.visible = false;
     part.label = "player-item-part";
@@ -262,16 +614,16 @@ function dropItem(x) {
 
   const inventoryInstance = getSelectedInstance();
   if (!inventoryInstance) {
-    addLog("No quedan objetos disponibles en este turno.");
+    addLog("No quedan objetos disponibles. Puedes pasar el turno.");
     return;
   }
 
   const definition = itemDefinitions.get(inventoryInstance.itemId);
   if (!definition) return;
 
-  const item = createItemBody(definition, inventoryInstance, clamp(x, 40, CONFIG.boardWidth - 40));
+  const item = createItemBody(definition, inventoryInstance, clamp(x, 42, CONFIG.boardWidth - 42));
   gameState.nextPhysicsId += 1;
-  inventoryInstance.consumed = true;
+  inventoryInstance.usedThisTurn = true;
 
   Body.setAngle(item, randomBetween(-0.12, 0.12));
   Body.setVelocity(item, { x: randomBetween(-0.25, 0.25), y: 0 });
@@ -289,66 +641,280 @@ function resolveItem(item, result) {
 
   data.resolved = true;
   const definition = itemDefinitions.get(data.itemId);
+  removeItem(root, false);
+
+  if (!definition) return;
   if (result === "activation") activateEffect(definition);
   else addLog(`${definition.name} cayó al vacío y no se activó.`);
 
-  removeItem(root);
+  updateUi();
 }
 
-function activateEffect(definition) {
-  const effect = definition.effect || { type: "damage", value: 1 };
+function damageItemFromHazard(item, hazardBody) {
+  const root = getRootBody(item);
+  const data = root.plugin?.pachinkrawler;
+  const hazardData = hazardBody.plugin?.pachinkrawlerHazard;
+  if (!data || data.resolved || !hazardData) return;
 
-  if (effect.type === "damage") {
-    gameState.enemyHp = Math.max(0, gameState.enemyHp - effect.value);
-    addLog(`${definition.name} se activó: ${effect.value} de daño.`);
-  } else if (effect.type === "armor") {
-    gameState.playerArmor += effect.value;
-    addLog(`${definition.name} se activó: +${effect.value} de armadura.`);
-  } else if (effect.type === "heal") {
-    const before = gameState.playerHealth;
-    gameState.playerHealth = Math.min(gameState.maxHealth, gameState.playerHealth + effect.value);
-    addLog(`${definition.name} se activó: +${gameState.playerHealth - before} de vida.`);
-  } else if (effect.type === "mana") {
-    const before = gameState.playerMana;
-    gameState.playerMana = Math.min(gameState.maxMana, gameState.playerMana + effect.value);
-    addLog(`${definition.name} se activó: +${gameState.playerMana - before} de maná.`);
-  } else if (effect.type === "spell") {
-    const manaCost = effect.manaCost || 0;
-    if (gameState.playerMana < manaCost) {
-      addLog(`${definition.name} llegó al buzón, pero no tienes suficiente maná (${manaCost} MP).`);
-    } else {
-      gameState.playerMana -= manaCost;
-      gameState.enemyHp = Math.max(0, gameState.enemyHp - (effect.value || 0));
-      addLog(`${definition.name} se lanzó: -${manaCost} MP y ${effect.value || 0} de daño.`);
-    }
-  }
+  const now = performance.now();
+  const lastHit = data.hazardHits[hazardData.layout.instanceId] || 0;
+  if (now - lastHit < CONFIG.hazardHitCooldownMs) return;
+  data.hazardHits[hazardData.layout.instanceId] = now;
 
-  if (gameState.enemyHp <= 0) {
-    gameState.combatOver = true;
-    gameState.turn = "ended";
-    clearActiveItems("victory");
-    addLog("¡Enemigo derrotado!");
+  const definition = itemDefinitions.get(data.itemId);
+  const instance = findInventoryInstance(data.inventoryInstanceId);
+  const hazardDefinition = hazardDefinitions.get(hazardData.definitionId);
+  if (!definition || !instance || !hazardDefinition) return;
+
+  instance.currentDurability = Math.max(0, instance.currentDurability - hazardDefinition.damage);
+  data.flashUntil = Date.now() + 220;
+
+  if (instance.currentDurability <= 0) {
+    instance.broken = true;
+    data.resolved = true;
+    removeItem(root, false);
+    addLog(`${definition.name} se rompió al tocar ${hazardDefinition.name}. Volverá al terminar el combate.`);
+  } else {
+    addLog(`${hazardDefinition.name} dañó ${definition.name}: ${instance.currentDurability}/${definition.durability} de durabilidad.`);
+    Sleeping.set(root, false);
   }
   updateUi();
 }
 
+function activateEffect(definition) {
+  const effect = definition.effect || { type: "damage", value: 1, target: "front" };
+
+  if (effect.type === "armor") {
+    gameState.run.player.armor += effect.value;
+    addLog(`${definition.name}: +${effect.value} de armadura.`);
+    return;
+  }
+
+  if (effect.type === "heal") {
+    const healed = healPlayer(effect.value);
+    addLog(`${definition.name}: +${healed} de vida.`);
+    return;
+  }
+
+  if (effect.type === "mana") {
+    const restored = restoreMana(effect.value);
+    addLog(`${definition.name}: +${restored} de maná.`);
+    return;
+  }
+
+  if (effect.type === "spellHeal") {
+    if (!spendMana(effect.manaCost, definition.name)) return;
+    const healed = healPlayer(effect.value);
+    addLog(`${definition.name}: -${effect.manaCost} MP y +${healed} de vida.`);
+    return;
+  }
+
+  if (effect.type === "spellDamage") {
+    if (!spendMana(effect.manaCost, definition.name)) return;
+    const target = getEnemyTarget(effect.target);
+    if (!target) return;
+    const outcome = dealDamage(target, effect.value, effect.armorPierce || 0);
+    applyOptionalStatus(target, effect.status);
+    addLog(`${definition.name}: -${effect.manaCost} MP, ${outcome.hpDamage} de daño a ${target.name}${statusLog(effect.status)}.`);
+    checkCombatVictory();
+    return;
+  }
+
+  if (effect.type === "cleave") {
+    const targets = livingEnemies();
+    const front = targets[0];
+    const second = targets[1];
+    if (!front) return;
+    const mainOutcome = dealDamage(front, effect.value);
+    let message = `${definition.name}: ${mainOutcome.hpDamage} de daño a ${front.name}`;
+    if (second) {
+      const splashOutcome = dealDamage(second, effect.splash || 0);
+      message += ` y ${splashOutcome.hpDamage} a ${second.name}`;
+    }
+    addLog(`${message}.`);
+    checkCombatVictory();
+    return;
+  }
+
+  const target = getEnemyTarget(effect.target);
+  if (!target) return;
+  let value = effect.value || 0;
+  if (effect.type === "execute" && target.hp / target.maxHp <= (effect.threshold ?? 0.5)) {
+    value += effect.bonus || 0;
+  }
+  const outcome = dealDamage(target, value, effect.armorPierce || 0);
+  applyOptionalStatus(target, effect.status);
+  addLog(`${definition.name}: ${outcome.hpDamage} de daño a ${target.name}${outcome.blocked ? ` (${outcome.blocked} bloqueado)` : ""}${statusLog(effect.status)}.`);
+  checkCombatVictory();
+}
+
+function spendMana(cost, itemName) {
+  if (gameState.run.player.mp < cost) {
+    addLog(`${itemName} llegó al buzón, pero necesitas ${cost} MP. El hechizo no se lanza.`);
+    return false;
+  }
+  gameState.run.player.mp -= cost;
+  return true;
+}
+
+function healPlayer(value) {
+  const player = gameState.run.player;
+  const before = player.hp;
+  player.hp = Math.min(player.maxHp, player.hp + value);
+  return player.hp - before;
+}
+
+function restoreMana(value) {
+  const player = gameState.run.player;
+  const before = player.mp;
+  player.mp = Math.min(player.maxMp, player.mp + value);
+  return player.mp - before;
+}
+
+function livingEnemies() {
+  return gameState.enemies.filter(enemy => enemy.hp > 0);
+}
+
+function getEnemyTarget(targetType = "front") {
+  const living = livingEnemies();
+  if (!living.length) return null;
+  return targetType === "back" ? living[living.length - 1] : living[0];
+}
+
+function dealDamage(enemy, amount, armorPierce = 0) {
+  if (!enemy || enemy.hp <= 0) return { hpDamage: 0, blocked: 0 };
+
+  const pierced = Math.min(enemy.armor, armorPierce, amount);
+  const remaining = Math.max(0, amount - pierced);
+  const blockableArmor = Math.max(0, enemy.armor - pierced);
+  const blocked = Math.min(blockableArmor, remaining);
+  const hpDamage = Math.max(0, pierced + remaining - blocked);
+
+  enemy.armor = Math.max(0, enemy.armor - blocked);
+  enemy.hp = Math.max(0, enemy.hp - hpDamage);
+  enemy.flashUntil = Date.now() + 240;
+  countDefeatIfNeeded(enemy);
+  window.setTimeout(updateCombatantsUi, 260);
+  return { hpDamage, blocked };
+}
+
+function applyOptionalStatus(enemy, status) {
+  if (!enemy || enemy.hp <= 0 || !status) return;
+  const existing = enemy.statuses[status.id];
+  enemy.statuses[status.id] = {
+    power: Math.max(existing?.power || 0, status.power || 0),
+    turns: Math.max(existing?.turns || 0, status.turns || 1)
+  };
+}
+
+function statusLog(status) {
+  if (!status) return "";
+  const definition = statusDefinitions[status.id];
+  return definition ? ` y aplica ${definition.name.toLowerCase()}` : "";
+}
+
+function countDefeatIfNeeded(enemy) {
+  if (enemy.hp > 0 || enemy.defeatCounted) return;
+  enemy.defeatCounted = true;
+  const id = enemy.definitionId;
+  gameState.run.adaptation[id] = (gameState.run.adaptation[id] || 0) + 1;
+}
+
+function checkCombatVictory() {
+  updateUi();
+  if (livingEnemies().length === 0) finishCombatVictory();
+}
+
+function finishCombatVictory() {
+  if (gameState.combatOver) return;
+  gameState.combatOver = true;
+  gameState.turn = "ended";
+  clearActiveItems();
+
+  for (const instance of gameState.run.inventory) {
+    const definition = itemDefinitions.get(instance.itemId);
+    instance.currentDurability = definition?.durability ?? instance.currentDurability;
+    instance.broken = false;
+    instance.usedThisTurn = false;
+  }
+
+  const goldReward = 8 + gameState.run.round * 3;
+  gameState.run.gold += goldReward;
+  gameState.run.phase = "transition";
+  gameState.run.combatSnapshot = null;
+  gameState.run.lastResult = {
+    round: gameState.run.round,
+    goldReward,
+    defeated: gameState.enemies.map(enemy => enemy.name)
+  };
+  Storage.save(gameState.run);
+
+  addLog("¡Combate superado!");
+  updateUi();
+  window.setTimeout(() => showVictoryResult(gameState.run.lastResult, false), 300);
+}
+
+function finishCombatDefeat() {
+  if (gameState.combatOver) return;
+  gameState.combatOver = true;
+  gameState.turn = "ended";
+  clearActiveItems();
+  if (!gameState.run.isTestMode) Storage.clear();
+  addLog("La run ha terminado.");
+  updateUi();
+
+  resultEyebrow.textContent = "Run terminada";
+  resultTitle.textContent = "Derrota";
+  resultMessage.textContent = "El jugador se ha quedado sin vida.";
+  resultDetails.innerHTML = `<span>Has alcanzado la ronda <strong>${gameState.run.round}</strong>.</span>`;
+  nextCombatButton.textContent = "Iniciar nueva run";
+  nextCombatButton.hidden = false;
+  gameState.resultAction = "new-run";
+  resultModal.hidden = false;
+}
+
+function showVictoryResult(result, resumed) {
+  const safeResult = result || { round: gameState.run.round, goldReward: 0, defeated: [] };
+  resultEyebrow.textContent = resumed ? "Partida guardada" : "Combate terminado";
+  resultTitle.textContent = "Victoria";
+  resultMessage.textContent = "La tienda se añadirá en una fase posterior. Por ahora puedes avanzar al siguiente combate.";
+  resultDetails.innerHTML = `
+    <span>Ronda superada: <strong>${safeResult.round}</strong></span>
+    <span>Oro obtenido: <strong>+${safeResult.goldReward}</strong></span>
+    <span>Durabilidad de la mochila restaurada.</span>
+  `;
+  nextCombatButton.textContent = "Continuar expedición";
+  nextCombatButton.hidden = false;
+  gameState.resultAction = "next";
+  resultModal.hidden = false;
+}
+
+function startNextCombat() {
+  gameState.run.round += 1;
+  gameState.run.phase = "combat";
+  gameState.run.lastResult = null;
+  startCombat();
+}
+
 Events.on(engine, "collisionStart", event => {
   for (const pair of event.pairs) {
-    const candidates = [pair.bodyA, pair.bodyB];
-    const part = candidates.find(body => body.label === "player-item" || body.label === "player-item-part");
-    if (!part) continue;
+    const bodies = [pair.bodyA, pair.bodyB];
+    const itemPart = bodies.find(body => body.label === "player-item" || body.label === "player-item-part");
+    if (!itemPart) continue;
 
-    const item = getRootBody(part);
-    const target = candidates.find(body => body !== part);
-    if (target?.label === "activation-slot") resolveItem(item, "activation");
-    else if (target?.label === "void-slot") resolveItem(item, "void");
+    const other = itemPart === pair.bodyA ? pair.bodyB : pair.bodyA;
+    const item = getRootBody(itemPart);
+
+    if (other.label === "activation-slot") resolveItem(item, "activation");
+    else if (other.label === "void-slot") resolveItem(item, "void");
+    else if (other.label === "hazard") damageItemFromHazard(item, other);
   }
 });
 
 Events.on(engine, "afterUpdate", () => {
   for (const item of [...gameState.activeItems]) {
     if (
-      item.position.y > CONFIG.boardHeight + 140 ||
+      item.position.y > CONFIG.boardHeight + 150 ||
       item.position.x < -180 ||
       item.position.x > CONFIG.boardWidth + 180
     ) {
@@ -361,12 +927,12 @@ function endPlayerTurn() {
   if (gameState.turn !== "player" || gameState.combatOver) return;
 
   const discarded = gameState.activeItems.size;
-  clearActiveItems("turn-ended");
+  clearActiveItems();
   gameState.turn = "enemy";
   closeBackpackModal();
 
   if (discarded > 0) {
-    addLog(`Turno terminado: ${discarded} objeto${discarded === 1 ? "" : "s"} activo${discarded === 1 ? "" : "s"} se pierde${discarded === 1 ? "" : "n"} sin activar.`);
+    addLog(`Pasaste turno: ${discarded} objeto${discarded === 1 ? "" : "s"} aún activo${discarded === 1 ? "" : "s"} se pierde${discarded === 1 ? "" : "n"} sin activar.`);
   } else {
     addLog("Turno enemigo…");
   }
@@ -378,64 +944,79 @@ function endPlayerTurn() {
 function enemyTurn() {
   if (gameState.combatOver) return;
 
-  let damage = CONFIG.enemyAttack;
-  const blocked = Math.min(gameState.playerArmor, damage);
-  gameState.playerArmor -= blocked;
-  damage -= blocked;
-  gameState.playerHealth = Math.max(0, gameState.playerHealth - damage);
-
-  addLog(`El enemigo ataca por ${CONFIG.enemyAttack}: ${blocked} bloqueado, ${damage} de daño.`);
-
-  if (gameState.playerHealth <= 0) {
-    gameState.combatOver = true;
-    gameState.turn = "ended";
-    addLog("Has sido derrotado.");
-  } else {
-    buildHand();
-    gameState.turn = "player";
+  processEnemyDamageStatuses();
+  if (livingEnemies().length === 0) {
+    finishCombatVictory();
+    return;
   }
+
+  const attackMessages = [];
+  let totalHpDamage = 0;
+  let totalBlocked = 0;
+
+  for (const enemy of livingEnemies()) {
+    const stun = enemy.statuses.stun;
+    if (stun?.turns > 0) {
+      stun.turns -= 1;
+      if (stun.turns <= 0) delete enemy.statuses.stun;
+      attackMessages.push(`${enemy.name} está aturdido`);
+      continue;
+    }
+
+    let attack = enemy.attack;
+    const freeze = enemy.statuses.freeze;
+    if (freeze?.turns > 0) {
+      attack = Math.max(0, attack - freeze.power);
+      freeze.turns -= 1;
+      if (freeze.turns <= 0) delete enemy.statuses.freeze;
+    }
+
+    const blocked = Math.min(gameState.run.player.armor, attack);
+    gameState.run.player.armor -= blocked;
+    const hpDamage = Math.max(0, attack - blocked);
+    gameState.run.player.hp = Math.max(0, gameState.run.player.hp - hpDamage);
+    totalBlocked += blocked;
+    totalHpDamage += hpDamage;
+    attackMessages.push(`${enemy.name}: ${attack}`);
+  }
+
+  if (totalHpDamage > 0 || totalBlocked > 0) flashPlayer();
+  addLog(`${attackMessages.join(" · ")}. Total: ${totalBlocked} bloqueado, ${totalHpDamage} de daño.`);
+
+  if (gameState.run.player.hp <= 0) {
+    finishCombatDefeat();
+    return;
+  }
+
+  resetTurnPool();
+  gameState.turn = "player";
   updateUi();
+  saveSafePoint();
 }
 
-function openBackpack() {
-  renderInventory();
-  backpackModal.hidden = false;
-}
-
-function closeBackpackModal() {
-  backpackModal.hidden = true;
-}
-
-function renderInventory() {
-  inventoryList.innerHTML = "";
-
-  for (const instance of gameState.hand) {
-    const definition = itemDefinitions.get(instance.itemId);
-    if (!definition) continue;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "inventory-item";
-    button.classList.toggle("is-selected", instance.instanceId === gameState.selectedInstanceId && !instance.consumed);
-    button.classList.toggle("is-consumed", instance.consumed);
-    button.disabled = instance.consumed || gameState.turn !== "player" || gameState.combatOver;
-    button.setAttribute("aria-label", `${definition.name}. ${effectText(definition)}`);
-    button.dataset.tooltip = `${definition.name} · ${effectText(definition)}`;
-    button.innerHTML = `<img src="${definition.sprite}" alt="">`;
-    button.addEventListener("click", () => selectInventoryInstance(instance.instanceId));
-    inventoryList.append(button);
+function processEnemyDamageStatuses() {
+  const messages = [];
+  for (const enemy of livingEnemies()) {
+    for (const statusId of ["burn", "bleed", "poison"]) {
+      const status = enemy.statuses[statusId];
+      if (!status?.turns) continue;
+      enemy.hp = Math.max(0, enemy.hp - status.power);
+      enemy.flashUntil = Date.now() + 220;
+      messages.push(`${enemy.name} recibe ${status.power} por ${statusDefinitions[statusId]?.name || statusId}`);
+      status.turns -= 1;
+      if (status.turns <= 0) delete enemy.statuses[statusId];
+      countDefeatIfNeeded(enemy);
+      if (enemy.hp <= 0) break;
+    }
   }
+  if (messages.length) addLog(messages.join(" · "));
+  updateCombatantsUi();
 }
 
-function effectText(definition) {
-  const effect = definition.effect;
-  if (!effect) return "Efecto desconocido";
-  if (effect.type === "damage") return `${effect.value} de daño`;
-  if (effect.type === "armor") return `${effect.value} de armadura`;
-  if (effect.type === "heal") return `${effect.value} de vida`;
-  if (effect.type === "mana") return `${effect.value} de maná`;
-  if (effect.type === "spell") return `${effect.value} de daño · cuesta ${effect.manaCost || 0} MP`;
-  return "Efecto desconocido";
+function flashPlayer() {
+  gameState.playerFlashUntil = Date.now() + 240;
+  updateCombatantsUi();
+  window.setTimeout(updateCombatantsUi, 260);
 }
 
 function shakeMachine() {
@@ -459,10 +1040,10 @@ function shakeMachine() {
   }, CONFIG.shakeCooldownMs);
 }
 
-function removeItem(item) {
+function removeItem(item, shouldUpdate = true) {
   Composite.remove(engine.world, item);
   gameState.activeItems.delete(item);
-  updateUi();
+  if (shouldUpdate) updateUi();
 }
 
 function clearActiveItems() {
@@ -472,6 +1053,55 @@ function clearActiveItems() {
     Composite.remove(engine.world, item);
   }
   gameState.activeItems.clear();
+}
+
+function openBackpack() {
+  renderInventory();
+  backpackModal.hidden = false;
+}
+
+function closeBackpackModal() {
+  backpackModal.hidden = true;
+}
+
+function renderInventory() {
+  inventoryList.innerHTML = "";
+  if (!gameState.run) return;
+
+  for (const instance of gameState.run.inventory) {
+    const definition = itemDefinitions.get(instance.itemId);
+    if (!definition) continue;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "inventory-item";
+    button.classList.toggle("is-selected", instance.instanceId === gameState.selectedInstanceId && !instance.usedThisTurn && !instance.broken);
+    button.classList.toggle("is-used", instance.usedThisTurn);
+    button.classList.toggle("is-broken", instance.broken);
+    button.disabled = instance.usedThisTurn || instance.broken || gameState.turn !== "player" || gameState.combatOver;
+    button.setAttribute("aria-label", `${definition.name}. ${effectText(definition)}. Durabilidad ${instance.currentDurability} de ${definition.durability}.`);
+    button.dataset.tooltip = `${definition.name} · ${effectText(definition)} · Durabilidad ${instance.currentDurability}/${definition.durability}. ${definition.description}`;
+    button.innerHTML = `
+      <img src="${definition.sprite}" alt="">
+      <span class="durability-pip">${instance.currentDurability}/${definition.durability}</span>
+    `;
+    button.addEventListener("click", () => selectInventoryInstance(instance.instanceId));
+    inventoryList.append(button);
+  }
+}
+
+function effectText(definition) {
+  const effect = definition.effect;
+  if (!effect) return "Efecto desconocido";
+  if (effect.type === "armor") return `+${effect.value} de armadura`;
+  if (effect.type === "heal") return `+${effect.value} de vida`;
+  if (effect.type === "mana") return `+${effect.value} de maná`;
+  if (effect.type === "spellHeal") return `Cura ${effect.value} · ${effect.manaCost} MP`;
+  if (effect.type === "spellDamage") return `${effect.value} de daño · ${effect.manaCost} MP`;
+  if (effect.type === "cleave") return `${effect.value} al frente · ${effect.splash} al siguiente`;
+  if (effect.type === "execute") return `${effect.value} de daño · bonus contra heridos`;
+  const target = effect.target === "back" ? "retaguardia" : "frente";
+  return `${effect.value} de daño · ${target}`;
 }
 
 render.canvas.addEventListener("pointerdown", event => {
@@ -488,6 +1118,7 @@ Events.on(render, "afterRender", () => {
   context.save();
   drawLaunchArea(context);
   drawBottomSlots(context);
+  drawHazards(context);
   drawItemSprites(context);
   if (gameState.debugHitboxes) drawHitboxes(context);
   context.restore();
@@ -495,7 +1126,7 @@ Events.on(render, "afterRender", () => {
 
 function drawLaunchArea(context) {
   context.fillStyle = CONFIG.colors.launchArea;
-  context.globalAlpha = 0.72;
+  context.globalAlpha = 0.75;
   context.fillRect(0, 0, CONFIG.boardWidth, CONFIG.launchAreaHeight);
   context.globalAlpha = 1;
   context.strokeStyle = CONFIG.colors.launchLine;
@@ -509,9 +1140,12 @@ function drawLaunchArea(context) {
   context.textAlign = "center";
   context.textBaseline = "middle";
 
-  const text = gameState.turn === "player"
-    ? (remainingItems().length ? "HAZ CLIC AQUÍ PARA SOLTAR UN OBJETO" : "SIN OBJETOS · PASA EL TURNO")
-    : "TURNO ENEMIGO";
+  let text = "COMBATE TERMINADO";
+  if (!gameState.combatOver && gameState.turn === "player") {
+    text = remainingItems().length ? "HAZ CLIC AQUÍ PARA SOLTAR UN OBJETO" : "SIN OBJETOS · PUEDES PASAR EL TURNO";
+  } else if (!gameState.combatOver) {
+    text = "TURNO ENEMIGO";
+  }
   context.fillText(text, CONFIG.boardWidth / 2, CONFIG.launchAreaHeight / 2);
 }
 
@@ -539,70 +1173,191 @@ function drawBottomSlots(context) {
   }
 }
 
-function drawItemSprites(context) {
-  for (const item of gameState.activeItems) {
-    const itemId = item.plugin?.pachinkrawler?.itemId;
-    const definition = itemDefinitions.get(itemId);
-    const image = itemImages.get(itemId);
+function drawHazards(context) {
+  const time = performance.now();
+  for (const body of gameState.hazardBodies) {
+    const hazardData = body.plugin?.pachinkrawlerHazard;
+    const definition = hazardDefinitions.get(hazardData?.definitionId);
+    const image = hazardImages.get(hazardData?.definitionId);
     if (!definition || !image?.complete || !image.naturalWidth) continue;
 
-    const width = image.naturalWidth * definition.scale;
-    const height = image.naturalHeight * definition.scale;
+    let angle = body.angle;
+    let scale = 1;
+    if (definition.id === "saw") angle += time / 350;
+    if (definition.id === "fire") scale = 1 + Math.sin(time / 180) * 0.035;
+
+    context.save();
+    context.translate(body.position.x, body.position.y);
+    context.rotate(angle);
+    context.scale(scale, scale);
+    context.drawImage(
+      image,
+      -definition.renderWidth / 2,
+      -definition.renderHeight / 2,
+      definition.renderWidth,
+      definition.renderHeight
+    );
+    context.restore();
+  }
+}
+
+function drawItemSprites(context) {
+  for (const item of gameState.activeItems) {
+    const data = item.plugin?.pachinkrawler;
+    const definition = itemDefinitions.get(data?.itemId);
+    const image = itemImages.get(data?.itemId);
+    if (!definition || !image?.complete || !image.naturalWidth) continue;
+
+    const scale = definition.spriteScale;
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    const origin = definition.spriteOrigin || { x: image.naturalWidth / 2, y: image.naturalHeight / 2 };
+
     context.save();
     context.translate(item.position.x, item.position.y);
     context.rotate(item.angle);
-    context.drawImage(image, -width / 2, -height / 2, width, height);
+    if ((data.flashUntil || 0) > Date.now()) {
+      context.globalAlpha = .55;
+      context.filter = "brightness(2) saturate(.4)";
+    }
+    context.drawImage(image, -origin.x * scale, -origin.y * scale, width, height);
     context.restore();
   }
 }
 
 function drawHitboxes(context) {
-  context.strokeStyle = "#ff4d6d";
-  context.fillStyle = "rgba(255,77,109,.13)";
   context.lineWidth = 2;
 
+  context.strokeStyle = "#ff4d6d";
+  context.fillStyle = "rgba(255,77,109,.13)";
   for (const item of gameState.activeItems) {
     const parts = item.parts.length > 1 ? item.parts.slice(1) : item.parts;
-    for (const part of parts) {
-      context.beginPath();
-      part.vertices.forEach((vertex, index) => {
-        if (index) context.lineTo(vertex.x, vertex.y);
-        else context.moveTo(vertex.x, vertex.y);
-      });
-      context.closePath();
-      context.fill();
-      context.stroke();
-    }
+    for (const part of parts) drawVertices(context, part.vertices);
   }
+
+  context.strokeStyle = "#ffb347";
+  context.fillStyle = "rgba(255,179,71,.12)";
+  for (const hazard of gameState.hazardBodies) drawVertices(context, hazard.vertices);
+}
+
+function drawVertices(context, vertices) {
+  context.beginPath();
+  vertices.forEach((vertex, index) => {
+    if (index) context.lineTo(vertex.x, vertex.y);
+    else context.moveTo(vertex.x, vertex.y);
+  });
+  context.closePath();
+  context.fill();
+  context.stroke();
 }
 
 function updateUi() {
+  if (!gameState.run) return;
+  const player = gameState.run.player;
   const selectedInstance = getSelectedInstance();
   const definition = selectedInstance ? itemDefinitions.get(selectedInstance.itemId) : null;
 
-  enemyHpElement.textContent = `${gameState.enemyHp}/${gameState.enemyMaxHp}`;
-  armorElement.textContent = gameState.playerArmor;
-  healthElement.textContent = `${gameState.playerHealth}/${gameState.maxHealth}`;
-  manaElement.textContent = `${gameState.playerMana}/${gameState.maxMana}`;
-  healthFillElement.style.width = `${(gameState.playerHealth / gameState.maxHealth) * 100}%`;
-  manaFillElement.style.width = `${(gameState.playerMana / gameState.maxMana) * 100}%`;
+  armorElement.textContent = player.armor;
+  healthElement.textContent = `${player.hp}/${player.maxHp}`;
+  manaElement.textContent = `${player.mp}/${player.maxMp}`;
+  healthFillElement.style.width = `${percentage(player.hp, player.maxHp)}%`;
+  manaFillElement.style.width = `${percentage(player.mp, player.maxMp)}%`;
   poolCountElement.textContent = remainingItems().length;
   selectedNameElement.textContent = definition?.name || "Sin objetos";
+  selectedDetailElement.textContent = definition && selectedInstance
+    ? `${effectText(definition)} · Durabilidad ${selectedInstance.currentDurability}/${definition.durability}`
+    : "Pasa el turno cuando hayas terminado.";
   selectedImageElement.hidden = !definition;
-  if (definition) selectedImageElement.src = definition.sprite;
+  if (definition) {
+    selectedImageElement.src = definition.sprite;
+    selectedImageElement.alt = definition.name;
+  }
 
+  roundLabelElement.textContent = `Ronda ${gameState.run.round}`;
+  runModeLabel.textContent = gameState.run.isTestMode ? "Modo de pruebas · no se guarda" : "Run normal · guardado automático";
   turnLabelElement.textContent = gameState.combatOver
     ? "Combate terminado"
     : gameState.turn === "player"
       ? "Turno del jugador"
       : "Turno del enemigo";
 
+  goldValueElement.textContent = gameState.run.gold;
+  inventoryCountElement.textContent = gameState.run.inventory.length;
   passButton.disabled = gameState.turn !== "player" || gameState.combatOver;
-  backpackButton.disabled = gameState.turn !== "player" || gameState.combatOver || remainingItems().length === 0;
-  shakeButton.disabled = !gameState.shakeReady || gameState.activeItems.size === 0;
-  setStatus(`Objetos activos: ${gameState.activeItems.size} · Pool: ${remainingItems().length}`);
+  backpackButton.disabled = !gameState.run;
+  shakeButton.disabled = !gameState.shakeReady || gameState.activeItems.size === 0 || gameState.combatOver;
+  setStatus(`Objetos activos: ${gameState.activeItems.size} · Disponibles: ${remainingItems().length} · Rotos: ${gameState.run.inventory.filter(item => item.broken).length}`);
 
+  updateCombatantsUi();
+  updateAdaptationSummary();
   if (!backpackModal.hidden) renderInventory();
+}
+
+function updateCombatantsUi() {
+  if (!gameState.run) return;
+  playerCombatantElement.classList.toggle("is-hit", gameState.playerFlashUntil > Date.now());
+  playerStatusesElement.innerHTML = "";
+
+  const living = livingEnemies();
+  formationLabelElement.textContent = `${living.length} enemigo${living.length === 1 ? "" : "s"} activo${living.length === 1 ? "" : "s"}`;
+  enemyFormationElement.innerHTML = "";
+
+  gameState.enemies.forEach(enemy => {
+    const livingIndex = living.findIndex(candidate => candidate.combatId === enemy.combatId);
+    const card = document.createElement("article");
+    card.className = "enemy-card";
+    card.dataset.enemyId = enemy.combatId;
+    card.classList.toggle("is-defeated", enemy.hp <= 0);
+    card.classList.toggle("is-front", livingIndex === 0 && enemy.hp > 0);
+    card.classList.toggle("is-back", livingIndex === living.length - 1 && living.length > 1 && enemy.hp > 0);
+    card.classList.toggle("is-hit", enemy.flashUntil > Date.now());
+
+    const positionText = enemy.hp <= 0
+      ? "Derrotado"
+      : livingIndex === 0
+        ? "Frente"
+        : livingIndex === living.length - 1
+          ? "Retaguardia"
+          : "Centro";
+
+    card.innerHTML = `
+      ${enemy.adaptationLevel > 0 ? `<span class="adaptation-badge">A${enemy.adaptationLevel}</span>` : ""}
+      <span class="enemy-position">${positionText}</span>
+      <img class="enemy-sprite" src="${enemy.sprite}" alt="${enemy.name}">
+      <strong class="enemy-name" title="${enemy.name}">${enemy.name}</strong>
+      <div class="enemy-health-label"><span>Vida</span><strong>${enemy.hp}/${enemy.maxHp}</strong></div>
+      <div class="enemy-health-bar"><div class="enemy-health-fill" style="width:${percentage(enemy.hp, enemy.maxHp)}%"></div></div>
+      <span class="enemy-armor">Armadura: ${enemy.armor}</span>
+      <div class="status-icons"></div>
+    `;
+
+    const statusesContainer = card.querySelector(".status-icons");
+    renderStatuses(statusesContainer, enemy.statuses);
+    enemyFormationElement.append(card);
+  });
+}
+
+function renderStatuses(container, statuses) {
+  for (const [statusId, status] of Object.entries(statuses || {})) {
+    const definition = statusDefinitions[statusId];
+    if (!definition || status.turns <= 0) continue;
+    const icon = document.createElement("span");
+    icon.className = "status-icon";
+    icon.title = `${definition.name}: ${status.turns} turno${status.turns === 1 ? "" : "s"}`;
+    icon.innerHTML = `<img src="${definition.sprite}" alt="${definition.name}"><span>${status.turns}</span>`;
+    container.append(icon);
+  }
+}
+
+function updateAdaptationSummary() {
+  const adapted = Object.entries(gameState.run.adaptation)
+    .map(([id, defeats]) => ({ definition: enemyDefinitions.get(id), defeats, level: Math.floor(defeats / 3) }))
+    .filter(entry => entry.level > 0 && entry.definition)
+    .sort((a, b) => b.level - a.level);
+
+  adaptationSummaryElement.textContent = adapted.length
+    ? adapted.map(entry => `${entry.definition.name}: Adaptación ${Math.min(entry.level, CONFIG.maxAdaptationLevel)}`).join(" · ")
+    : "Los enemigos se adaptarán cada 3 derrotas de la misma especie.";
 }
 
 function addLog(message) {
@@ -618,8 +1373,30 @@ function toggleDebug() {
   debugButton.textContent = `Hitboxes: ${gameState.debugHitboxes ? "ON" : "OFF"}`;
 }
 
+function returnToMenu() {
+  const hasUnsafeProgress = gameState.activeItems.size > 0 || (gameState.turn === "player" && !gameState.combatOver);
+  if (hasUnsafeProgress) {
+    const message = gameState.run?.isTestMode
+      ? "El modo de pruebas no se guarda. ¿Volver al menú?"
+      : "La partida continuará desde el inicio del turno guardado. ¿Volver al menú?";
+    if (!window.confirm(message)) return;
+  }
+  showMenu();
+}
+
+function handleResultAction() {
+  resultModal.hidden = true;
+  if (gameState.resultAction === "new-run") beginNewRun(false);
+  else startNextCombat();
+}
+
 function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
+}
+
+function percentage(value, maximum) {
+  if (maximum <= 0) return 0;
+  return clamp((value / maximum) * 100, 0, 100);
 }
 
 function randomBetween(minimum, maximum) {
@@ -635,19 +1412,42 @@ function shuffle(values) {
   return result;
 }
 
+function weightedChoice(values, getWeight) {
+  const total = values.reduce((sum, value) => sum + getWeight(value), 0);
+  let roll = Math.random() * total;
+  for (const value of values) {
+    roll -= getWeight(value);
+    if (roll <= 0) return value;
+  }
+  return values[values.length - 1];
+}
+
+newRunButton.addEventListener("click", () => beginNewRun(false));
+testRunButton.addEventListener("click", () => beginNewRun(true));
+continueButton.addEventListener("click", continueSavedRun);
+deleteSaveButton.addEventListener("click", () => {
+  if (!Storage.hasSave()) return;
+  if (!window.confirm("¿Borrar la partida guardada?")) return;
+  Storage.clear();
+  refreshMenu();
+});
+menuButton.addEventListener("click", returnToMenu);
 shakeButton.addEventListener("click", shakeMachine);
 debugButton.addEventListener("click", toggleDebug);
 passButton.addEventListener("click", endPlayerTurn);
 backpackButton.addEventListener("click", openBackpack);
-closeBackpack.addEventListener("click", closeBackpackModal);
+closeBackpackButton.addEventListener("click", closeBackpackModal);
 backpackModal.addEventListener("click", event => {
   if (event.target === backpackModal) closeBackpackModal();
 });
+nextCombatButton.addEventListener("click", handleResultAction);
+resultMenuButton.addEventListener("click", showMenu);
 
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape") closeBackpackModal();
+  if (event.key === "Escape") {
+    if (!backpackModal.hidden) closeBackpackModal();
+  }
 });
 
-createBoard();
-buildHand();
-updateUi();
+refreshMenu();
+showMenu();

@@ -3,77 +3,158 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Pachinkrawler - Prototipo Fase 3.3">
-  <title>Pachinkrawler — Fase 3.3</title>
+  <meta name="description" content="Pachinkrawler - prototipo web roguelike de pachinko">
+  <title>Pachinkrawler — Fase 4</title>
   <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
-<main class="game-page">
-  <header class="game-header"><h1>Pachinkrawler</h1><p id="turn-label">Turno del jugador</p></header>
-  <section class="game-layout">
-    <section class="game-panel">
-      <div id="game-container" aria-label="Tablero de Pachinkrawler"></div>
-      <p id="event-log" class="event-log">Elige objetos de la mochila y lánzalos.</p>
-      <div class="controls">
-        <p id="status">Cargando…</p>
-        <div class="button-group">
-          <button id="debug-button" class="secondary-button" type="button">Hitboxes: OFF</button>
-          <button id="shake-button" class="secondary-button" type="button">Sacudir</button>
-          <button id="pass-button" type="button">Pasar turno</button>
+  <main id="app" class="app-shell">
+    <section id="menu-screen" class="menu-screen" aria-labelledby="game-title">
+      <div class="menu-card">
+        <p class="eyebrow">Prototipo Fase 4</p>
+        <h1 id="game-title">Pachinkrawler</h1>
+        <p class="menu-copy">
+          Combate por turnos, objetos físicos y una mochila que evoluciona durante la run.
+        </p>
+
+        <div class="menu-actions">
+          <button id="new-run-button" type="button">Iniciar nueva run</button>
+          <button id="continue-button" class="secondary-button" type="button">Continuar</button>
+          <button id="test-run-button" class="ghost-button" type="button">Modo de pruebas</button>
+        </div>
+
+        <p id="continue-summary" class="save-summary">No hay una run guardada.</p>
+        <button id="delete-save-button" class="text-button" type="button">Borrar partida guardada</button>
+
+        <div class="menu-notes">
+          <strong>Guardado automático</strong>
+          <span>La partida se guarda al inicio de cada turno y entre combates.</span>
         </div>
       </div>
     </section>
 
-    <aside class="side-panel">
-      <section class="next-card">
-        <div><span>Siguiente objeto</span><strong id="selected-name">Espada</strong></div>
-        <img id="selected-image" src="./assets/sprites/sword_test.png" alt="Objeto seleccionado">
-        <button id="backpack-button" class="secondary-button" type="button">Mochila</button>
-      </section>
-
-      <section class="pool-card">
-        <span>Objetos restantes</span><strong id="pool-count">6</strong>
-      </section>
-
-      <section class="resource-card" aria-label="Recursos del jugador">
-        <div class="resource-row">
-          <div class="resource-label"><span>Vida</span><strong id="player-health">20/20</strong></div>
-          <div class="resource-bar health-bar"><div id="player-health-fill" class="resource-fill"></div></div>
+    <section id="game-screen" class="game-screen" hidden>
+      <header class="game-header">
+        <div>
+          <p class="eyebrow" id="run-mode-label">Run normal</p>
+          <h1>Pachinkrawler</h1>
         </div>
-        <div class="resource-row">
-          <div class="resource-label"><span>Maná</span><strong id="player-mana">0/10</strong></div>
-          <div class="resource-bar mana-bar"><div id="player-mana-fill" class="resource-fill"></div></div>
+        <div class="header-status">
+          <strong id="round-label">Ronda 1</strong>
+          <span id="turn-label">Turno del jugador</span>
         </div>
-        <div class="armor-row"><span>Armadura</span><strong id="player-armor">0</strong></div>
+        <button id="menu-button" class="secondary-button" type="button">Guardar y salir</button>
+      </header>
+
+      <section class="game-layout">
+        <section class="game-panel">
+          <div id="game-container" aria-label="Tablero físico de Pachinkrawler"></div>
+          <p id="event-log" class="event-log" aria-live="polite">Preparando combate…</p>
+          <div class="controls">
+            <p id="status">Cargando…</p>
+            <div class="button-group">
+              <button id="debug-button" class="secondary-button" type="button">Hitboxes: OFF</button>
+              <button id="shake-button" class="secondary-button" type="button">Sacudir</button>
+              <button id="pass-button" type="button">Pasar turno</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="side-panel">
+          <section class="next-card">
+            <div class="next-copy">
+              <span>Siguiente objeto</span>
+              <strong id="selected-name">Sin objeto</strong>
+              <small id="selected-detail">—</small>
+            </div>
+            <img id="selected-image" alt="Objeto seleccionado">
+            <button id="backpack-button" class="secondary-button" type="button">Mochila</button>
+          </section>
+
+          <section class="pool-card">
+            <span>Objetos restantes</span>
+            <strong id="pool-count">0</strong>
+          </section>
+
+          <section class="resource-card" aria-label="Recursos del jugador">
+            <div class="resource-row">
+              <div class="resource-label"><span>Vida</span><strong id="player-health">20/20</strong></div>
+              <div class="resource-bar health-bar"><div id="player-health-fill" class="resource-fill"></div></div>
+            </div>
+            <div class="resource-row">
+              <div class="resource-label"><span>Maná</span><strong id="player-mana">10/10</strong></div>
+              <div class="resource-bar mana-bar"><div id="player-mana-fill" class="resource-fill"></div></div>
+            </div>
+            <div class="armor-row"><span>Armadura</span><strong id="player-armor">0</strong></div>
+          </section>
+
+          <section class="perks-card">
+            <h2>Run</h2>
+            <div class="run-stats">
+              <span>Oro <strong id="gold-value">0</strong></span>
+              <span>Objetos <strong id="inventory-count">3</strong></span>
+            </div>
+            <p id="adaptation-summary">Los enemigos se adaptarán si derrotas muchas veces a la misma especie.</p>
+          </section>
+
+          <section class="combat-card">
+            <div class="combat-heading">
+              <h2>Zona de combate</h2>
+              <span id="formation-label">1 enemigo</span>
+            </div>
+
+            <div class="battlefield">
+              <article id="player-combatant" class="player-combatant">
+                <div class="combat-sprite-frame player-frame">
+                  <img id="player-sprite" src="./assets/sprites/player/player_idle.png" alt="Jugador">
+                </div>
+                <strong>Jugador</strong>
+                <div id="player-statuses" class="status-icons" aria-label="Estados del jugador"></div>
+              </article>
+
+              <div class="versus">VS</div>
+
+              <div id="enemy-formation" class="enemy-formation" aria-label="Formación enemiga"></div>
+            </div>
+          </section>
+        </aside>
       </section>
+    </section>
+  </main>
 
-      <section class="perks-card"><h2>Perks del jugador</h2><p>Sin perks en este prototipo.</p></section>
-
-      <section class="combat-card">
-        <h2>Zona de combate</h2>
-        <div class="combatants">
-          <div class="combatant"><div class="portrait player">J</div><span>Jugador</span></div>
-          <div class="versus">VS</div>
-          <div class="combatant"><div class="portrait enemy">E</div><span>Enemigo</span><strong id="enemy-hp">30/30</strong></div>
+  <div id="backpack-modal" class="modal" hidden>
+    <div class="modal-card backpack-card" role="dialog" aria-modal="true" aria-labelledby="backpack-title">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Inventario de la run</p>
+          <h2 id="backpack-title">Mochila</h2>
         </div>
-        <p>El enemigo ataca al terminar tu turno.</p>
-      </section>
-
-    </aside>
-  </section>
-</main>
-
-<div id="backpack-modal" class="modal" hidden>
-  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="backpack-title">
-    <div class="modal-header"><h2 id="backpack-title">Mochila</h2><button id="close-backpack" class="secondary-button" type="button">Cerrar</button></div>
-    <p>Selecciona una instancia. Pasa el cursor por un icono para ver sus datos.</p>
-    <div id="inventory-list" class="inventory-list"></div>
+        <button id="close-backpack" class="secondary-button" type="button">Cerrar</button>
+      </div>
+      <p>Selecciona una instancia. Pasa el cursor o enfócala para ver sus datos.</p>
+      <div id="inventory-list" class="inventory-list"></div>
+    </div>
   </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
-<script src="./js/data/items.js"></script>
-<script src="./js/main.js"></script>
+  <div id="result-modal" class="modal" hidden>
+    <div class="modal-card result-card" role="dialog" aria-modal="true" aria-labelledby="result-title">
+      <p class="eyebrow" id="result-eyebrow">Combate terminado</p>
+      <h2 id="result-title">Victoria</h2>
+      <p id="result-message"></p>
+      <div id="result-details" class="result-details"></div>
+      <div class="result-actions">
+        <button id="next-combat-button" type="button">Continuar expedición</button>
+        <button id="result-menu-button" class="secondary-button" type="button">Volver al menú</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
+  <script src="./js/data/items.js"></script>
+  <script src="./js/data/enemies.js"></script>
+  <script src="./js/data/hazards.js"></script>
+  <script src="./js/systems/storage.js"></script>
+  <script src="./js/main.js"></script>
 </body>
 </html>
