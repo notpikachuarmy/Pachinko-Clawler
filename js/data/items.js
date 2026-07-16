@@ -10,6 +10,7 @@ window.PACHINKRAWLER_ITEMS = [
     "restitution": 0.38,
     "friction": 0.18,
     "durability": 4,
+    "effect": { "type": "damage", "value": 5 },
     "vertices": [
       {
         "x": -3.6,
@@ -82,6 +83,7 @@ window.PACHINKRAWLER_ITEMS = [
     "restitution": 0.24,
     "friction": 0.24,
     "durability": 6,
+    "effect": { "type": "armor", "value": 4 },
     "vertices": [
       {
         "x": -2.52,
@@ -126,6 +128,7 @@ window.PACHINKRAWLER_ITEMS = [
     "restitution": 0.48,
     "friction": 0.12,
     "durability": 3,
+    "effect": { "type": "heal", "value": 4 },
     "vertices": [
       {
         "x": -10.26,
