@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Pachinkrawler - Prototipo Fase 3.2">
-  <title>Pachinkrawler — Fase 3.2</title>
+  <meta name="description" content="Pachinkrawler - Prototipo Fase 3.3">
+  <title>Pachinkrawler — Fase 3.3</title>
   <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
@@ -35,9 +35,16 @@
         <span>Objetos restantes</span><strong id="pool-count">6</strong>
       </section>
 
-      <section class="hud" aria-label="Estado del jugador">
-        <div><span>Vida</span><strong id="player-health">20/20</strong></div>
-        <div><span>Armadura</span><strong id="player-armor">0</strong></div>
+      <section class="resource-card" aria-label="Recursos del jugador">
+        <div class="resource-row">
+          <div class="resource-label"><span>Vida</span><strong id="player-health">20/20</strong></div>
+          <div class="resource-bar health-bar"><div id="player-health-fill" class="resource-fill"></div></div>
+        </div>
+        <div class="resource-row">
+          <div class="resource-label"><span>Maná</span><strong id="player-mana">0/10</strong></div>
+          <div class="resource-bar mana-bar"><div id="player-mana-fill" class="resource-fill"></div></div>
+        </div>
+        <div class="armor-row"><span>Armadura</span><strong id="player-armor">0</strong></div>
       </section>
 
       <section class="perks-card"><h2>Perks del jugador</h2><p>Sin perks en este prototipo.</p></section>

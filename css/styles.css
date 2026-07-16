@@ -49,3 +49,10 @@
 }
 .inventory-item:hover::after,.inventory-item:focus-visible::after{opacity:1;transform:translate(-50%,0)}
 .modal-card{overflow:visible}
+
+
+/* Fase 3.3: recursos visuales */
+.resource-card{padding:12px;display:grid;gap:11px;background:var(--panel);border:1px solid var(--border);border-radius:10px}
+.resource-row{display:grid;gap:6px}.resource-label,.armor-row{display:flex;justify-content:space-between;align-items:center}.resource-label span,.armor-row span{color:var(--muted)}
+.resource-bar{height:18px;border:1px solid #55556e;border-radius:999px;overflow:hidden;background:#0d0d15;box-shadow:inset 0 1px 4px #0008}.resource-fill{height:100%;width:0;transition:width .25s ease}.health-bar .resource-fill{background:linear-gradient(90deg,#9f2531,#e34c58)}.mana-bar .resource-fill{background:linear-gradient(90deg,#2451a6,#3b8cff)}
+.armor-row{padding-top:2px}.armor-row strong{color:var(--accent)}

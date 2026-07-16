@@ -235,7 +235,21 @@ window.PACHINKRAWLER_ITEMS = [
   {
     "id": "mana_potion", "name": "Poción de maná", "sprite": "./assets/sprites/mana_potion.png",
     "scale": 0.27, "density": 0.002, "restitution": 0.48, "friction": 0.12, "durability": 3,
+    "effect": { "type": "mana", "value": 4 },
+    "vertices": [{"x":-10.26,"y":-24.3},{"x":-10.26,"y":-18.09},{"x":-13.23,"y":-17.82},{"x":-10.26,"y":-5.13},{"x":-22.14,"y":4.05},{"x":-22.14,"y":16.2},{"x":-8.1,"y":27.27},{"x":8.37,"y":27.27},{"x":22.14,"y":16.2},{"x":22.14,"y":4.05},{"x":8.64,"y":-9.45},{"x":11.88,"y":-11.34},{"x":8.64,"y":-24.3}]
+  }
+,
+  {
+    "id": "wood_shield", "name": "Escudo de madera", "sprite": "./assets/sprites/wood_shield.png",
+    "scale": 0.28, "density": 0.0024, "restitution": 0.3, "friction": 0.22, "durability": 4,
+    "effect": { "type": "armor", "value": 3 },
+    "vertices": [{"x":-2.52,"y":-29.4},{"x":-26.04,"y":-19.04},{"x":-26.04,"y":-0.84},{"x":-8.96,"y":24.08},{"x":3.92,"y":27.72},{"x":18.2,"y":16.24},{"x":24.64,"y":5.04},{"x":26.88,"y":-19.04}]
+  },
+  {
+    "id": "hp_potion", "name": "Poción de vida menor", "sprite": "./assets/sprites/hp_potion.png",
+    "scale": 0.25, "density": 0.002, "restitution": 0.48, "friction": 0.12, "durability": 2,
     "effect": { "type": "heal", "value": 4 },
     "vertices": [{"x":-10.26,"y":-24.3},{"x":-10.26,"y":-18.09},{"x":-13.23,"y":-17.82},{"x":-10.26,"y":-5.13},{"x":-22.14,"y":4.05},{"x":-22.14,"y":16.2},{"x":-8.1,"y":27.27},{"x":8.37,"y":27.27},{"x":22.14,"y":16.2},{"x":22.14,"y":4.05},{"x":8.64,"y":-9.45},{"x":11.88,"y":-11.34},{"x":8.64,"y":-24.3}]
   }
+
 ];

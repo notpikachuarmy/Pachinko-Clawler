@@ -26,16 +26,9 @@ const CONFIG = Object.freeze({
 });
 
 const STARTING_LOADOUT = Object.freeze([
-  "iron_sword",
   "wood_sword",
-  "wood_boken",
-  "wood_dage",
-  "wood_estoque",
-  "wood_katana",
-  "wood_machete",
-  "wood_mandoble",
-  "iron_shield",
-  "mana_potion"
+  "wood_shield",
+  "hp_potion"
 ]);
 
 const itemDefinitions = new Map((window.PACHINKRAWLER_ITEMS || []).map(item => [item.id, item]));
@@ -59,6 +52,9 @@ const statusElement = $("#status");
 const enemyHpElement = $("#enemy-hp");
 const armorElement = $("#player-armor");
 const healthElement = $("#player-health");
+const healthFillElement = $("#player-health-fill");
+const manaElement = $("#player-mana");
+const manaFillElement = $("#player-mana-fill");
 const logElement = $("#event-log");
 const poolCountElement = $("#pool-count");
 const selectedNameElement = $("#selected-name");
@@ -99,6 +95,8 @@ const gameState = {
   playerArmor: 0,
   playerHealth: 20,
   maxHealth: 20,
+  playerMana: 0,
+  maxMana: 10,
   turn: "player",
   combatOver: false
 };
@@ -310,6 +308,19 @@ function activateEffect(definition) {
     const before = gameState.playerHealth;
     gameState.playerHealth = Math.min(gameState.maxHealth, gameState.playerHealth + effect.value);
     addLog(`${definition.name} se activó: +${gameState.playerHealth - before} de vida.`);
+  } else if (effect.type === "mana") {
+    const before = gameState.playerMana;
+    gameState.playerMana = Math.min(gameState.maxMana, gameState.playerMana + effect.value);
+    addLog(`${definition.name} se activó: +${gameState.playerMana - before} de maná.`);
+  } else if (effect.type === "spell") {
+    const manaCost = effect.manaCost || 0;
+    if (gameState.playerMana < manaCost) {
+      addLog(`${definition.name} llegó al buzón, pero no tienes suficiente maná (${manaCost} MP).`);
+    } else {
+      gameState.playerMana -= manaCost;
+      gameState.enemyHp = Math.max(0, gameState.enemyHp - (effect.value || 0));
+      addLog(`${definition.name} se lanzó: -${manaCost} MP y ${effect.value || 0} de daño.`);
+    }
   }
 
   if (gameState.enemyHp <= 0) {
@@ -421,7 +432,10 @@ function effectText(definition) {
   if (!effect) return "Efecto desconocido";
   if (effect.type === "damage") return `${effect.value} de daño`;
   if (effect.type === "armor") return `${effect.value} de armadura`;
-  return `${effect.value} de vida`;
+  if (effect.type === "heal") return `${effect.value} de vida`;
+  if (effect.type === "mana") return `${effect.value} de maná`;
+  if (effect.type === "spell") return `${effect.value} de daño · cuesta ${effect.manaCost || 0} MP`;
+  return "Efecto desconocido";
 }
 
 function shakeMachine() {
@@ -569,6 +583,9 @@ function updateUi() {
   enemyHpElement.textContent = `${gameState.enemyHp}/${gameState.enemyMaxHp}`;
   armorElement.textContent = gameState.playerArmor;
   healthElement.textContent = `${gameState.playerHealth}/${gameState.maxHealth}`;
+  manaElement.textContent = `${gameState.playerMana}/${gameState.maxMana}`;
+  healthFillElement.style.width = `${(gameState.playerHealth / gameState.maxHealth) * 100}%`;
+  manaFillElement.style.width = `${(gameState.playerMana / gameState.maxMana) * 100}%`;
   poolCountElement.textContent = remainingItems().length;
   selectedNameElement.textContent = definition?.name || "Sin objetos";
   selectedImageElement.hidden = !definition;
