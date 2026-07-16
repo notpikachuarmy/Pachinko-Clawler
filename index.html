@@ -3,28 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Pachinkrawler - Prototipo Fase 1">
-  <title>Pachinkrawler — Fase 1</title>
+  <meta name="description" content="Pachinkrawler - Prototipo Fase 2">
+  <title>Pachinkrawler — Fase 2</title>
   <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
   <main class="game-page">
     <header class="game-header">
       <h1>Pachinkrawler</h1>
-      <p>Haz clic en la zona superior para soltar un objeto.</p>
+      <p>Selecciona un objeto y haz clic en la franja superior para soltarlo.</p>
     </header>
+
+    <section class="item-bar" aria-label="Selección de objeto">
+      <button class="item-button is-selected" type="button" data-item-id="sword_test">Espada</button>
+      <button class="item-button" type="button" data-item-id="shield_test">Escudo</button>
+      <button class="item-button" type="button" data-item-id="potion_test">Poción</button>
+    </section>
 
     <section class="game-panel">
       <div id="game-container" aria-label="Tablero de Pachinkrawler"></div>
 
       <div class="controls">
-        <p id="status">Objetos en el tablero: 0</p>
-        <button id="reset-button" type="button">Reiniciar</button>
+        <p id="status">Cargando objetos…</p>
+        <div class="button-group">
+          <button id="debug-button" class="secondary-button" type="button">Hitboxes: OFF</button>
+          <button id="shake-button" class="secondary-button" type="button">Sacudir</button>
+          <button id="reset-button" type="button">Reiniciar</button>
+        </div>
       </div>
     </section>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
+  <script src="./js/data/items.js"></script>
   <script src="./js/main.js"></script>
 </body>
 </html>
