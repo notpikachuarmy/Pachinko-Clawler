@@ -3,40 +3,71 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Pachinkrawler - Prototipo Fase 3">
-  <title>Pachinkrawler — Fase 3</title>
+  <meta name="description" content="Pachinkrawler - Prototipo Fase 3.1">
+  <title>Pachinkrawler — Fase 3.1</title>
   <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
-  <main class="game-page">
-    <header class="game-header"><h1>Pachinkrawler</h1><p>Haz llegar los objetos a un buzón verde para activar su efecto.</p></header>
-    <section class="hud" aria-label="Estado del combate">
-      <div><span>Enemigo</span><strong id="enemy-hp">30/30</strong></div>
-      <div><span>Vida</span><strong id="player-health">12/20</strong></div>
-      <div><span>Armadura</span><strong id="player-armor">0</strong></div>
-    </section>
-    <section class="item-bar" aria-label="Selección de objeto">
-      <button class="item-button is-selected" type="button" data-item-id="sword_test">Espada · 5 daño</button>
-      <button class="item-button" type="button" data-item-id="shield_test">Escudo · 4 armadura</button>
-      <button class="item-button" type="button" data-item-id="potion_test">Poción · 4 vida</button>
-    </section>
+<main class="game-page">
+  <header class="game-header"><h1>Pachinkrawler</h1><p id="turn-label">Turno del jugador</p></header>
+  <section class="game-layout">
     <section class="game-panel">
       <div id="game-container" aria-label="Tablero de Pachinkrawler"></div>
-      <p id="event-log" class="event-log">Prueba los tres objetos en los buzones verdes.</p>
+      <p id="event-log" class="event-log">Elige objetos de la mochila y lánzalos.</p>
       <div class="controls">
         <p id="status">Cargando…</p>
         <div class="button-group">
           <button id="debug-button" class="secondary-button" type="button">Hitboxes: OFF</button>
           <button id="shake-button" class="secondary-button" type="button">Sacudir</button>
-          <button id="board-button" class="secondary-button" type="button">Nuevo tablero</button>
-          <button id="reset-button" type="button">Reiniciar</button>
+          <button id="pass-button" type="button">Pasar turno</button>
         </div>
       </div>
     </section>
-  </main>
-  <script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
-  <script src="./js/data/items.js"></script>
-  <script src="./js/main.js"></script>
+
+    <aside class="side-panel">
+      <section class="next-card">
+        <div><span>Siguiente objeto</span><strong id="selected-name">Espada</strong></div>
+        <img id="selected-image" src="./assets/sprites/sword_test.png" alt="Objeto seleccionado">
+        <button id="backpack-button" class="secondary-button" type="button">Mochila</button>
+      </section>
+
+      <section class="pool-card">
+        <span>Objetos restantes</span><strong id="pool-count">6</strong>
+      </section>
+
+      <section class="hud" aria-label="Estado del jugador">
+        <div><span>Vida</span><strong id="player-health">20/20</strong></div>
+        <div><span>Armadura</span><strong id="player-armor">0</strong></div>
+      </section>
+
+      <section class="perks-card"><h2>Perks del jugador</h2><p>Sin perks en este prototipo.</p></section>
+
+      <section class="combat-card">
+        <h2>Zona de combate</h2>
+        <div class="combatants">
+          <div class="combatant"><div class="portrait player">J</div><span>Jugador</span></div>
+          <div class="versus">VS</div>
+          <div class="combatant"><div class="portrait enemy">E</div><span>Enemigo</span><strong id="enemy-hp">30/30</strong></div>
+        </div>
+        <p>El enemigo ataca al terminar tu turno.</p>
+      </section>
+
+      <button id="reset-button" class="danger-button" type="button">Reiniciar combate</button>
+    </aside>
+  </section>
+</main>
+
+<div id="backpack-modal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="backpack-title">
+    <div class="modal-header"><h2 id="backpack-title">Mochila</h2><button id="close-backpack" class="secondary-button" type="button">Cerrar</button></div>
+    <p>Selecciona el próximo objeto que quieres lanzar.</p>
+    <div id="inventory-list" class="inventory-list"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
+<script src="./js/data/items.js"></script>
+<script src="./js/main.js"></script>
 </body>
 </html>
