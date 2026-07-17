@@ -499,7 +499,7 @@ function saveSafePoint() {
     drawOrder: clone(gameState.turnDrawPile),
     board: {
       version: CONFIG.boardVersion,
-      slots: clone(gameState.slots),
+      slots: gameState.slots.map(slot => slot.type),
       hazards: gameState.hazardBodies.map(body => clone(body.plugin.pachinkrawlerHazard.layout))
     }
   };
@@ -723,12 +723,18 @@ function createLowerGuides() {
 }
 
 function createBottomZone(types) {
+  const normalizedTypes = (types || ["wall", "activation", "void", "activation", "wall"]).map(entry => {
+    if (typeof entry === "string") return entry;
+    if (entry && typeof entry.type === "string") return entry.type;
+    return "void";
+  });
+
   const slotCount = 5;
   const slotWidth = CONFIG.boardWidth / slotCount;
   const zoneHeight = CONFIG.boardHeight - CONFIG.bottomZoneTop;
-  gameState.slots = types.map((type, index) => ({ type, x: index * slotWidth, width: slotWidth }));
+  gameState.slots = normalizedTypes.map((type, index) => ({ type, x: index * slotWidth, width: slotWidth }));
 
-  return types.map((type, index) => {
+  return normalizedTypes.map((type, index) => {
     const center = index * slotWidth + slotWidth / 2;
     if (type === "wall") {
       return Bodies.rectangle(center, CONFIG.bottomZoneTop + zoneHeight * 0.68, slotWidth - 12, 76, {
