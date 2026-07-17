@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Pachinkrawler - prototipo web roguelike de pachinko">
-  <title>Pachinkrawler — Fase 4.4</title>
+  <title>Pachinkrawler — Fase 5</title>
   <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
   <main id="app" class="app-shell">
     <section id="menu-screen" class="menu-screen" aria-labelledby="game-title">
       <div class="menu-card">
-        <p class="eyebrow">Prototipo Fase 4.4</p>
+        <p class="eyebrow">Prototipo Fase 5</p>
         <h1 id="game-title">Pachinkrawler</h1>
         <p class="menu-copy">
           Combate por turnos, objetos físicos y una mochila que evoluciona durante la run.
@@ -28,7 +28,7 @@
 
         <div class="menu-notes">
           <strong>Guardado automático</strong>
-          <span>La partida se guarda al inicio de cada turno y entre combates.</span>
+          <span>La partida se guarda al inicio de cada turno, tras las victorias y dentro de la tienda.</span>
         </div>
       </div>
     </section>
@@ -91,7 +91,7 @@
           <section class="perks-card">
             <h2>Run</h2>
             <div class="run-stats">
-              <span>Oro <strong id="gold-value">0</strong></span>
+              <span class="gold-inline"><img src="./assets/sprites/ui/gold_coin.png" alt=""> Oro <strong id="gold-value">0</strong></span>
               <span>Objetos <strong id="inventory-count">6</strong></span>
             </div>
             <p id="adaptation-summary">Los enemigos se adaptarán si derrotas muchas veces a la misma especie.</p>
@@ -122,6 +122,77 @@
         </aside>
       </section>
     </section>
+
+    <section id="shop-screen" class="shop-screen" hidden aria-labelledby="shop-title">
+      <header class="shop-header">
+        <div class="shop-brand">
+          <img src="./assets/sprites/ui/shop_sign.png" alt="Tienda Pachinko">
+          <div>
+            <p class="eyebrow">Descanso entre combates</p>
+            <h1 id="shop-title">Tienda Pachinko</h1>
+          </div>
+        </div>
+        <div class="shop-header-actions">
+          <div class="shop-gold-badge" aria-label="Oro disponible">
+            <img src="./assets/sprites/ui/gold_coin.png" alt="">
+            <strong id="shop-gold-value">0</strong>
+          </div>
+          <button id="shop-menu-button" class="secondary-button" type="button">Guardar y salir</button>
+        </div>
+      </header>
+
+      <section class="shop-layout">
+        <section class="shop-machine-panel">
+          <div class="shop-section-heading">
+            <div>
+              <p class="eyebrow">Compra física</p>
+              <h2>Mini pachinko</h2>
+            </div>
+            <div class="discount-badge">Derecha: <strong id="shop-discount-label">-20%</strong></div>
+          </div>
+          <div id="shop-container" aria-label="Mini tablero de compra"></div>
+          <p id="shop-log" class="event-log" aria-live="polite">Selecciona un objeto de la vitrina.</p>
+          <p class="shop-rule-note">La compra cae siempre desde el centro. Izquierda cobra el precio normal; derecha aplica el descuento de esta tienda. No existe salida de vacío.</p>
+        </section>
+
+        <aside class="shop-side-panel">
+          <section class="shopkeeper-card">
+            <img src="./assets/sprites/shop/shopkeeper.png" alt="Tendero de la tienda Pachinko">
+            <div>
+              <p class="eyebrow">Tendero</p>
+              <h2>Elige tu próxima herramienta</h2>
+              <p>Siempre hay al menos un objeto común. Puedes comprar, ahorrar o rerollear toda la vitrina.</p>
+            </div>
+          </section>
+
+          <section class="offers-card">
+            <div class="shop-section-heading">
+              <div>
+                <p class="eyebrow">Vitrina</p>
+                <h2>Objetos disponibles</h2>
+              </div>
+              <span id="shop-round-label">Tras ronda 1</span>
+            </div>
+            <div id="shop-offers" class="shop-offers"></div>
+          </section>
+
+          <section class="shop-controls-card">
+            <button id="reroll-button" class="reroll-button secondary-button" type="button">
+              <img src="./assets/sprites/ui/reroll.png" alt="">
+              <span>Reroll completo</span>
+              <strong id="reroll-cost">4</strong>
+              <img class="mini-coin" src="./assets/sprites/ui/gold_coin.png" alt="oro">
+            </button>
+            <p>El reroll sustituye los objetos restantes y también reabastece los huecos ya comprados. El descuento no cambia.</p>
+            <div class="shop-exit-actions">
+              <button id="shop-backpack-button" class="secondary-button" type="button">Ver mochila</button>
+              <button id="leave-shop-button" type="button">Ir al siguiente combate</button>
+            </div>
+          </section>
+        </aside>
+      </section>
+    </section>
+
   </main>
 
   <div id="backpack-modal" class="modal" hidden>

@@ -372,3 +372,254 @@ button:not(:disabled):hover { filter: brightness(1.08); transform: translateY(-1
 
 .hazard-affinity-note { margin-bottom: 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
 .hazard-affinity-note strong { color: var(--text); }
+
+/* -------------------------------------------------------------------------- */
+/* Fase 5: ciclo combate → tienda Pachinko → combate                         */
+/* -------------------------------------------------------------------------- */
+.gold-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.gold-inline img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.shop-screen { width: 100%; }
+.shop-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: linear-gradient(145deg, #202034, #151521);
+}
+.shop-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.shop-brand > img {
+  width: 126px;
+  height: 72px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.shop-brand h1 {
+  margin: 0;
+  color: var(--accent);
+  font-size: clamp(1.75rem, 4vw, 2.7rem);
+  line-height: 1;
+}
+.shop-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.shop-gold-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 92px;
+  padding: 8px 12px;
+  border: 1px solid #6d5724;
+  border-radius: 999px;
+  background: #17120a;
+  color: var(--accent);
+  font-size: 1.2rem;
+}
+.shop-gold-badge img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.shop-layout {
+  display: grid;
+  grid-template-columns: minmax(520px, 720px) minmax(420px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.shop-machine-panel,
+.shop-side-panel > section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.shop-machine-panel { padding: 12px; }
+.shop-side-panel { display: grid; gap: 12px; }
+.shop-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.shop-section-heading h2 { margin: 0; font-size: 1.12rem; }
+.shop-section-heading > span { color: var(--muted); font-size: .84rem; }
+.discount-badge {
+  padding: 7px 10px;
+  border: 1px solid #3f775d;
+  border-radius: 999px;
+  background: #13281f;
+  color: #baf6d7;
+  font-size: .82rem;
+  white-space: nowrap;
+}
+#shop-container {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #3b3b55;
+  border-radius: 9px;
+  background: #11111b;
+  touch-action: none;
+}
+#shop-container canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.shop-rule-note {
+  margin: 10px 2px 0;
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.45;
+}
+
+.shopkeeper-card {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  overflow: hidden;
+}
+.shopkeeper-card > img {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+}
+.shopkeeper-card h2 { margin: 0; font-size: 1.12rem; }
+.shopkeeper-card p:last-child {
+  margin: 9px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.offers-card,
+.shop-controls-card { padding: 14px; }
+.shop-offers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.shop-offer {
+  position: relative;
+  display: grid;
+  grid-template-rows: 92px auto auto auto 1fr auto;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #4b4b69;
+  border-radius: 11px;
+  background: linear-gradient(160deg, #292941, #181825);
+}
+.shop-offer.is-empty {
+  min-height: 252px;
+  place-items: center;
+  border-style: dashed;
+  color: var(--muted);
+  text-align: center;
+}
+.shop-offer.is-common { border-top: 3px solid #a4a7b1; }
+.shop-offer.is-uncommon { border-top: 3px solid #4b9ded; }
+.shop-offer.is-rare { border-top: 3px solid #b46df0; }
+.shop-offer > img {
+  width: 100%;
+  height: 92px;
+  object-fit: contain;
+}
+.shop-offer h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .88rem;
+}
+.shop-offer .offer-rarity {
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.shop-offer .offer-effect,
+.shop-offer .offer-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: .75rem;
+  line-height: 1.35;
+}
+.shop-offer .offer-price {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-weight: 900;
+}
+.shop-offer .offer-price img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+.shop-offer button { width: 100%; padding-inline: 7px; font-size: .78rem; }
+
+.reroll-button {
+  display: grid;
+  grid-template-columns: 38px 1fr auto 22px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+.reroll-button > img:first-child { width: 38px; height: 38px; object-fit: contain; }
+.reroll-button .mini-coin { width: 22px; height: 22px; object-fit: contain; }
+.reroll-button strong { color: var(--accent); }
+.shop-controls-card > p {
+  margin: 10px 0 13px;
+  color: var(--muted);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+.shop-exit-actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: 9px; }
+
+@media (max-width: 1100px) {
+  .shop-layout { grid-template-columns: 1fr; }
+  .shop-side-panel { grid-template-columns: 1fr 1fr; }
+  .shopkeeper-card { grid-column: span 2; }
+}
+@media (max-width: 720px) {
+  .shop-header { align-items: stretch; flex-direction: column; }
+  .shop-header-actions { justify-content: space-between; }
+  .shop-brand > img { width: 100px; height: 60px; }
+  .shop-offers { grid-template-columns: 1fr; }
+  .shop-offer { grid-template-columns: 88px 1fr; grid-template-rows: auto; }
+  .shop-offer > img { grid-row: span 6; height: 100px; }
+  .shop-offer.is-empty { min-height: 120px; }
+  .shop-side-panel { grid-template-columns: 1fr; }
+  .shopkeeper-card { grid-column: auto; grid-template-columns: 100px 1fr; }
+  .shopkeeper-card > img { width: 100px; height: 100px; }
+  .shop-exit-actions { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .shop-brand { align-items: flex-start; }
+  .shop-brand > img { display: none; }
+  .shop-header-actions { align-items: stretch; flex-direction: column; }
+  .shop-gold-badge { justify-content: center; }
+}

@@ -38,6 +38,22 @@ const CONFIG = Object.freeze({
   }
 });
 
+const SHOP_CONFIG = Object.freeze({
+  width: 620,
+  height: 660,
+  launchY: 54,
+  sensorY: 625,
+  discountOptions: [20, 35, 50],
+  offerCount: 3,
+  colors: {
+    background: "#171724",
+    wall: "#51516a",
+    peg: "#dedee8",
+    normal: "#6b4a26",
+    discount: "#247a52"
+  }
+});
+
 const STARTING_LOADOUT = Object.freeze([
   "wood_sword",
   "wood_sword",
@@ -59,6 +75,7 @@ const hazardImages = preloadImages(hazardDefinitions, definition => definition.s
 const $ = selector => document.querySelector(selector);
 const menuScreen = $("#menu-screen");
 const gameScreen = $("#game-screen");
+const shopScreen = $("#shop-screen");
 const newRunButton = $("#new-run-button");
 const continueButton = $("#continue-button");
 const testRunButton = $("#test-run-button");
@@ -101,6 +118,17 @@ const resultMessage = $("#result-message");
 const resultDetails = $("#result-details");
 const nextCombatButton = $("#next-combat-button");
 const resultMenuButton = $("#result-menu-button");
+const shopContainer = $("#shop-container");
+const shopGoldValue = $("#shop-gold-value");
+const shopDiscountLabel = $("#shop-discount-label");
+const shopRoundLabel = $("#shop-round-label");
+const shopOffersElement = $("#shop-offers");
+const shopLogElement = $("#shop-log");
+const rerollButton = $("#reroll-button");
+const rerollCostElement = $("#reroll-cost");
+const leaveShopButton = $("#leave-shop-button");
+const shopMenuButton = $("#shop-menu-button");
+const shopBackpackButton = $("#shop-backpack-button");
 
 const engine = Engine.create({
   // Dormir cuerpos provocaba que escudos y libros quedasen congelados
@@ -126,6 +154,25 @@ const runner = Runner.create();
 Render.run(render);
 Runner.run(runner, engine);
 
+const shopEngine = Engine.create({
+  enableSleeping: false,
+  gravity: { x: 0, y: 1, scale: 0.00115 }
+});
+const shopRender = Render.create({
+  element: shopContainer,
+  engine: shopEngine,
+  options: {
+    width: SHOP_CONFIG.width,
+    height: SHOP_CONFIG.height,
+    wireframes: false,
+    background: SHOP_CONFIG.colors.background,
+    pixelRatio: 1
+  }
+});
+const shopRunner = Runner.create();
+Render.run(shopRender);
+Runner.run(shopRunner, shopEngine);
+
 const gameState = {
   run: null,
   scene: "menu",
@@ -142,7 +189,11 @@ const gameState = {
   debugHitboxes: false,
   shakeReady: true,
   resultAction: "next",
-  playerFlashUntil: 0
+  playerFlashUntil: 0,
+  shopBodies: [],
+  shopActiveBody: null,
+  shopPurchase: null,
+  shopBusy: false
 };
 
 function preloadImages(definitions, getSource) {
@@ -188,6 +239,8 @@ function createRun(isTestMode = false) {
       .filter(itemId => itemDefinitions.has(itemId))
       .map(itemId => createInventoryInstance(itemId)),
     adaptation: {},
+    discoveredItems: isTestMode ? [...itemDefinitions.keys()] : [...new Set(STARTING_LOADOUT)],
+    shopState: null,
     combatSnapshot: null,
     lastResult: null
   };
@@ -207,9 +260,11 @@ function createInventoryInstance(itemId) {
 function showMenu() {
   gameState.scene = "menu";
   clearActiveItems();
+  clearShopItem();
   closeBackpackModal();
   resultModal.hidden = true;
   gameScreen.hidden = true;
+  shopScreen.hidden = true;
   menuScreen.hidden = false;
   refreshMenu();
 }
@@ -217,6 +272,7 @@ function showMenu() {
 function showGame() {
   gameState.scene = "game";
   menuScreen.hidden = true;
+  shopScreen.hidden = true;
   gameScreen.hidden = false;
 
   // Algunos navegadores conservan el desplazamiento vertical del menú.
@@ -235,8 +291,13 @@ function refreshMenu() {
     return;
   }
 
-  const phase = saved.phase === "transition" ? "entre combates" : "en combate";
-  continueSummary.textContent = `Run guardada · Ronda ${saved.round} · ${phase} · ${saved.inventory.length} objetos`;
+  const phaseLabels = {
+    transition: "recompensa de victoria",
+    shop: "en la tienda",
+    combat: "en combate"
+  };
+  const phase = phaseLabels[saved.phase] || "en la expedición";
+  continueSummary.textContent = `Run guardada · Ronda ${saved.round} · ${phase} · ${saved.inventory.length} objetos · ${saved.gold || 0} oro`;
 }
 
 function beginNewRun(isTestMode = false) {
@@ -275,6 +336,11 @@ function continueSavedRun() {
     return;
   }
 
+  if (saved.phase === "shop") {
+    showShop();
+    return;
+  }
+
   if (!saved.combatSnapshot) {
     startCombat();
     return;
@@ -285,6 +351,11 @@ function continueSavedRun() {
 
 
 function migrateLoadedRun(run) {
+  run.discoveredItems = Array.isArray(run.discoveredItems)
+    ? run.discoveredItems.filter(id => itemDefinitions.has(id))
+    : [...new Set((run.inventory || []).map(instance => instance.itemId))];
+  run.shopState = run.shopState || null;
+
   // Durante el prototipo, una partida de la ronda 1 que aún conserve
   // exactamente el antiguo kit 1/1/1 recibe el nuevo kit inicial 3/2/1.
   // No alteramos runs avanzadas ni inventarios que ya hayan cambiado.
@@ -309,8 +380,11 @@ function migrateLoadedRun(run) {
 
 function startCombat() {
   clearActiveItems();
+  clearShopItem();
   closeBackpackModal();
   resultModal.hidden = true;
+  shopScreen.hidden = true;
+  gameScreen.hidden = false;
 
   const run = gameState.run;
   run.phase = "combat";
@@ -840,6 +914,10 @@ function damageItemFromHazard(item, hazardBody) {
 }
 
 function activateEffect(definition) {
+  if (!gameState.run.discoveredItems.includes(definition.id)) {
+    gameState.run.discoveredItems.push(definition.id);
+    addLog(`Códice actualizado: has descubierto el efecto de ${definition.name}.`);
+  }
   const effect = definition.effect || { type: "damage", value: 1, target: "front" };
 
   if (effect.type === "armor") {
@@ -1000,9 +1078,10 @@ function finishCombatVictory() {
     instance.usedThisTurn = false;
   }
 
-  const goldReward = 8 + gameState.run.round * 3;
+  const goldReward = 10 + Math.floor(Math.random() * 4);
   gameState.run.gold += goldReward;
   gameState.run.phase = "transition";
+  gameState.run.shopState = null;
   gameState.run.combatSnapshot = null;
   gameState.run.lastResult = {
     round: gameState.run.round,
@@ -1040,16 +1119,16 @@ function showVictoryResult(result, resumed) {
   const safeResult = result || { round: gameState.run.round, goldReward: 0, hpRestored: 0, defeated: [] };
   resultEyebrow.textContent = resumed ? "Partida guardada" : "Combate terminado";
   resultTitle.textContent = "Victoria";
-  resultMessage.textContent = "La tienda se añadirá en una fase posterior. Por ahora puedes avanzar al siguiente combate.";
+  resultMessage.textContent = "Has recuperado la vida. Ahora puedes gastar el oro en la Tienda Pachinko o ahorrarlo para más adelante.";
   resultDetails.innerHTML = `
     <span>Ronda superada: <strong>${safeResult.round}</strong></span>
     <span>Oro obtenido: <strong>+${safeResult.goldReward}</strong></span>
     <span>Vida restaurada para el siguiente combate: <strong>${gameState.run.player.hp}/${gameState.run.player.maxHp}</strong>${safeResult.hpRestored ? ` (+${safeResult.hpRestored})` : ""}.</span>
     <span>Durabilidad de la mochila restaurada.</span>
   `;
-  nextCombatButton.textContent = "Continuar expedición";
+  nextCombatButton.textContent = "Ir a la tienda";
   nextCombatButton.hidden = false;
-  gameState.resultAction = "next";
+  gameState.resultAction = "shop";
   resultModal.hidden = false;
 }
 
@@ -1067,9 +1146,416 @@ function startNextCombat() {
   restorePlayerBetweenCombats();
   gameState.run.round += 1;
   gameState.run.phase = "combat";
+  gameState.run.shopState = null;
   gameState.run.lastResult = null;
   startCombat();
 }
+
+function showShop() {
+  const run = gameState.run;
+  if (!run) return;
+
+  clearActiveItems();
+  clearShopItem();
+  closeBackpackModal();
+  resultModal.hidden = true;
+  menuScreen.hidden = true;
+  gameScreen.hidden = true;
+  shopScreen.hidden = false;
+  gameState.scene = "shop";
+  gameState.turn = "ended";
+  gameState.combatOver = true;
+  gameState.shopBusy = false;
+
+  restorePlayerBetweenCombats();
+  run.phase = "shop";
+  const isNewShop = !run.shopState || run.shopState.round !== run.round;
+  if (isNewShop) {
+    run.shopState = createShopState(run.round);
+  }
+  shopLogElement.textContent = isNewShop
+    ? "Selecciona un objeto de la vitrina."
+    : "Tienda retomada. Las ofertas y el descuento se han conservado.";
+
+  createShopBoard();
+  renderShopOffers();
+  updateShopUi();
+  Storage.save(run);
+  window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+}
+
+function createShopState(round) {
+  const discount = SHOP_CONFIG.discountOptions[Math.floor(Math.random() * SHOP_CONFIG.discountOptions.length)];
+  return {
+    round,
+    discount,
+    rerollCount: 0,
+    offers: generateShopOffers()
+  };
+}
+
+function generateShopOffers() {
+  const allItems = [...itemDefinitions.values()];
+  const commonItems = allItems.filter(item => item.rarity === "common");
+  const selected = [];
+
+  if (commonItems.length) selected.push(commonItems[Math.floor(Math.random() * commonItems.length)]);
+
+  while (selected.length < SHOP_CONFIG.offerCount && allItems.length) {
+    let candidate = null;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const rolled = weightedChoice(allItems, item => rarityShopWeight(item.rarity));
+      const copies = selected.filter(item => item.id === rolled.id).length;
+      if (copies < 2) {
+        candidate = rolled;
+        break;
+      }
+    }
+    candidate = candidate || allItems.find(item => selected.filter(value => value.id === item.id).length < 2) || allItems[0];
+    selected.push(candidate);
+  }
+
+  return shuffle(selected).map(definition => ({
+    offerId: createId("offer"),
+    itemId: definition.id,
+    price: rollShopPrice(definition.rarity)
+  }));
+}
+
+function rarityShopWeight(rarity) {
+  if (rarity === "rare") return 1;
+  if (rarity === "uncommon") return 3;
+  return 8;
+}
+
+function rollShopPrice(rarity) {
+  const ranges = {
+    common: [6, 10],
+    uncommon: [13, 19],
+    rare: [22, 32]
+  };
+  const [minimum, maximum] = ranges[rarity] || ranges.common;
+  return minimum + Math.floor(Math.random() * (maximum - minimum + 1));
+}
+
+function getRerollCost(rerollCount = 0) {
+  const costs = [4, 7, 11, 16];
+  return costs[rerollCount] ?? (16 + (rerollCount - 3) * 6);
+}
+
+function rarityName(rarity) {
+  const names = { common: "Común", uncommon: "Poco común", rare: "Raro" };
+  return names[rarity] || "Común";
+}
+
+function renderShopOffers() {
+  shopOffersElement.innerHTML = "";
+  const run = gameState.run;
+  const state = run?.shopState;
+  if (!run || !state) return;
+
+  state.offers.forEach((offer, slotIndex) => {
+    if (!offer) {
+      const empty = document.createElement("article");
+      empty.className = "shop-offer is-empty";
+      empty.innerHTML = `<strong>Hueco comprado</strong><span>El próximo reroll lo reabastece.</span>`;
+      shopOffersElement.append(empty);
+      return;
+    }
+
+    const definition = itemDefinitions.get(offer.itemId);
+    if (!definition) return;
+    const discovered = run.discoveredItems.includes(definition.id);
+    const card = document.createElement("article");
+    card.className = `shop-offer is-${definition.rarity || "common"}`;
+    card.innerHTML = `
+      <img src="${definition.sprite}" alt="${discovered ? definition.name : "Objeto no identificado"}">
+      <span class="offer-rarity">${rarityName(definition.rarity)}</span>
+      <h3 title="${discovered ? definition.name : "Objeto desconocido"}">${discovered ? definition.name : "Objeto desconocido"}</h3>
+      <p class="offer-effect">${discovered ? effectText(definition) : "Efecto: ???"}</p>
+      <p class="offer-meta">${materialName(definition.material)} · Durabilidad ${definition.durability}</p>
+      <div class="offer-price"><img src="./assets/sprites/ui/gold_coin.png" alt=""><span>${offer.price}</span></div>
+      <button type="button" data-shop-slot="${slotIndex}">Lanzar compra</button>
+    `;
+    const button = card.querySelector("button");
+    button.disabled = gameState.shopBusy || run.gold < offer.price;
+    button.title = run.gold < offer.price
+      ? `Necesitas ${offer.price} de oro para garantizar la compra.`
+      : "Soltar este objeto desde el centro del mini pachinko.";
+    button.addEventListener("click", () => launchShopPurchase(slotIndex));
+    shopOffersElement.append(card);
+  });
+}
+
+function updateShopUi() {
+  const run = gameState.run;
+  const state = run?.shopState;
+  if (!run || !state) return;
+
+  shopGoldValue.textContent = run.gold;
+  shopDiscountLabel.textContent = `-${state.discount}%`;
+  shopRoundLabel.textContent = `Tras ronda ${state.round}`;
+  const rerollCost = getRerollCost(state.rerollCount);
+  rerollCostElement.textContent = rerollCost;
+  rerollButton.disabled = gameState.shopBusy || run.gold < rerollCost;
+  leaveShopButton.disabled = gameState.shopBusy;
+  shopMenuButton.disabled = gameState.shopBusy;
+  shopBackpackButton.disabled = gameState.shopBusy;
+  renderShopOffers();
+}
+
+function rerollShop() {
+  const run = gameState.run;
+  const state = run?.shopState;
+  if (!run || !state || gameState.shopBusy) return;
+
+  const cost = getRerollCost(state.rerollCount);
+  if (run.gold < cost) {
+    shopLogElement.textContent = `Necesitas ${cost} de oro para hacer reroll.`;
+    return;
+  }
+
+  run.gold -= cost;
+  state.rerollCount += 1;
+  state.offers = generateShopOffers();
+  shopLogElement.textContent = `Vitrina reabastecida por ${cost} de oro. El descuento sigue siendo -${state.discount}%.`;
+  Storage.save(run);
+  updateShopUi();
+}
+
+function createShopBoard() {
+  clearShopItem();
+  for (const body of gameState.shopBodies) Composite.remove(shopEngine.world, body);
+  gameState.shopBodies = [];
+
+  const wallOptions = {
+    isStatic: true,
+    restitution: 0.56,
+    friction: 0.04,
+    label: "shop-wall",
+    render: { fillStyle: SHOP_CONFIG.colors.wall }
+  };
+  const bodies = [
+    Bodies.rectangle(-20, SHOP_CONFIG.height / 2, 40, SHOP_CONFIG.height, wallOptions),
+    Bodies.rectangle(SHOP_CONFIG.width + 20, SHOP_CONFIG.height / 2, 40, SHOP_CONFIG.height, wallOptions),
+    Bodies.rectangle(SHOP_CONFIG.width / 2, 570, 18, 155, wallOptions)
+  ];
+
+  for (let row = 0; row < 7; row += 1) {
+    const spacing = 74;
+    const offset = row % 2 ? spacing / 2 : 0;
+    const y = 135 + row * 61;
+    for (let column = 0; column < 8; column += 1) {
+      const x = 48 + column * spacing + offset;
+      if (x > SHOP_CONFIG.width - 38) continue;
+      // Abrimos algunos corredores sin hacer el resultado totalmente predecible.
+      if ((row === 1 && column === 3) || (row === 4 && column === 1) || (row === 5 && column === 5)) continue;
+      bodies.push(Bodies.circle(x, y, 9, {
+        isStatic: true,
+        restitution: 0.88,
+        friction: 0.015,
+        label: "shop-peg",
+        render: { fillStyle: SHOP_CONFIG.colors.peg, strokeStyle: "#85859c", lineWidth: 2 }
+      }));
+    }
+  }
+
+  const leftGuide = Bodies.rectangle(108, 535, 165, 16, wallOptions);
+  const rightGuide = Bodies.rectangle(SHOP_CONFIG.width - 108, 535, 165, 16, wallOptions);
+  Body.setAngle(leftGuide, 0.28);
+  Body.setAngle(rightGuide, -0.28);
+  bodies.push(leftGuide, rightGuide);
+
+  bodies.push(
+    Bodies.rectangle(SHOP_CONFIG.width * 0.25, SHOP_CONFIG.sensorY, SHOP_CONFIG.width / 2 - 12, 55, {
+      isStatic: true, isSensor: true, label: "shop-normal-slot", render: { visible: false }
+    }),
+    Bodies.rectangle(SHOP_CONFIG.width * 0.75, SHOP_CONFIG.sensorY, SHOP_CONFIG.width / 2 - 12, 55, {
+      isStatic: true, isSensor: true, label: "shop-discount-slot", render: { visible: false }
+    })
+  );
+
+  gameState.shopBodies = bodies;
+  Composite.add(shopEngine.world, bodies);
+}
+
+function createShopItemBody(definition) {
+  const physicsScale = 0.82;
+  const vertices = definition.vertices.map(vertex => ({ x: vertex.x * physicsScale, y: vertex.y * physicsScale }));
+  let body = Bodies.fromVertices(
+    SHOP_CONFIG.width / 2,
+    SHOP_CONFIG.launchY,
+    [vertices],
+    {
+      label: "shop-item",
+      restitution: Math.max(0.38, definition.restitution || 0.4),
+      friction: definition.friction || 0.14,
+      frictionAir: 0.0035,
+      density: definition.density || 0.002,
+      plugin: { pachinkrawlerShop: { itemId: definition.id, resolved: false, physicsScale } },
+      render: { visible: false }
+    },
+    true
+  );
+
+  if (!body) {
+    body = Bodies.rectangle(SHOP_CONFIG.width / 2, SHOP_CONFIG.launchY, 44, 70, {
+      label: "shop-item",
+      restitution: 0.45,
+      render: { visible: false },
+      plugin: { pachinkrawlerShop: { itemId: definition.id, resolved: false, physicsScale } }
+    });
+  }
+
+  body.label = "shop-item";
+  body.plugin.pachinkrawlerShop = body.plugin.pachinkrawlerShop || { itemId: definition.id, resolved: false, physicsScale };
+  for (const part of body.parts) {
+    part.label = "shop-item-part";
+    part.render.visible = false;
+  }
+  return body;
+}
+
+function launchShopPurchase(slotIndex) {
+  const run = gameState.run;
+  const state = run?.shopState;
+  const offer = state?.offers?.[slotIndex];
+  if (!run || !state || !offer || gameState.shopBusy) return;
+  if (run.gold < offer.price) {
+    shopLogElement.textContent = `Necesitas ${offer.price} de oro para garantizar esta compra.`;
+    return;
+  }
+
+  const definition = itemDefinitions.get(offer.itemId);
+  if (!definition) return;
+  clearShopItem();
+  gameState.shopBusy = true;
+  gameState.shopPurchase = { slotIndex, offer: clone(offer), startedAt: Date.now() };
+  const body = createShopItemBody(definition);
+  gameState.shopActiveBody = body;
+  Body.setAngle(body, randomBetween(-0.13, 0.13));
+  Body.setVelocity(body, { x: randomBetween(-0.22, 0.22), y: 0 });
+  Body.setAngularVelocity(body, randomBetween(-0.045, 0.045));
+  Composite.add(shopEngine.world, body);
+  shopLogElement.textContent = `${definition.name} cae desde el centro…`;
+  updateShopUi();
+}
+
+function getShopRootBody(body) {
+  return body?.parent && body.parent !== body ? body.parent : body;
+}
+
+function resolveShopPurchase(outcome) {
+  const run = gameState.run;
+  const state = run?.shopState;
+  const purchase = gameState.shopPurchase;
+  const body = gameState.shopActiveBody;
+  if (!run || !state || !purchase || !body) return;
+
+  const root = getShopRootBody(body);
+  const data = root.plugin?.pachinkrawlerShop;
+  if (!data || data.resolved) return;
+  data.resolved = true;
+
+  const offer = state.offers[purchase.slotIndex];
+  if (!offer || offer.offerId !== purchase.offer.offerId) {
+    clearShopItem();
+    gameState.shopBusy = false;
+    updateShopUi();
+    return;
+  }
+
+  const definition = itemDefinitions.get(offer.itemId);
+  const paid = outcome === "discount"
+    ? Math.max(1, Math.ceil(offer.price * (100 - state.discount) / 100))
+    : offer.price;
+
+  run.gold = Math.max(0, run.gold - paid);
+  run.inventory.push(createInventoryInstance(offer.itemId));
+  state.offers[purchase.slotIndex] = null;
+  Storage.save(run);
+
+  const saving = offer.price - paid;
+  shopLogElement.textContent = outcome === "discount"
+    ? `${definition.name} comprado por ${paid} de oro. ¡Has ahorrado ${saving} con el -${state.discount}%!`
+    : `${definition.name} comprado por ${paid} de oro a precio normal.`;
+
+  window.setTimeout(() => {
+    clearShopItem();
+    gameState.shopBusy = false;
+    updateShopUi();
+  }, 420);
+}
+
+function clearShopItem() {
+  if (gameState.shopActiveBody) Composite.remove(shopEngine.world, gameState.shopActiveBody);
+  gameState.shopActiveBody = null;
+  gameState.shopPurchase = null;
+}
+
+function leaveShop() {
+  if (gameState.shopBusy || !gameState.run) return;
+  Storage.save(gameState.run);
+  startNextCombat();
+}
+
+Events.on(shopEngine, "collisionStart", event => {
+  for (const pair of event.pairs) {
+    const bodies = [pair.bodyA, pair.bodyB];
+    const itemPart = bodies.find(body => body.label === "shop-item" || body.label === "shop-item-part");
+    if (!itemPart) continue;
+    const other = itemPart === pair.bodyA ? pair.bodyB : pair.bodyA;
+    if (other.label === "shop-normal-slot") resolveShopPurchase("normal");
+    else if (other.label === "shop-discount-slot") resolveShopPurchase("discount");
+  }
+});
+
+Events.on(shopEngine, "afterUpdate", () => {
+  const body = gameState.shopActiveBody;
+  if (!body) return;
+  const elapsed = Date.now() - (gameState.shopPurchase?.startedAt || Date.now());
+  if (body.position.y > SHOP_CONFIG.height + 80 || elapsed > 12000) {
+    resolveShopPurchase(body.position.x >= SHOP_CONFIG.width / 2 ? "discount" : "normal");
+  }
+});
+
+Events.on(shopRender, "afterRender", () => {
+  const context = shopRender.context;
+  const state = gameState.run?.shopState;
+  context.save();
+
+  context.fillStyle = SHOP_CONFIG.colors.normal;
+  context.fillRect(4, 590, SHOP_CONFIG.width / 2 - 8, 66);
+  context.fillStyle = SHOP_CONFIG.colors.discount;
+  context.fillRect(SHOP_CONFIG.width / 2 + 4, 590, SHOP_CONFIG.width / 2 - 8, 66);
+  context.fillStyle = "#fff";
+  context.font = "800 17px system-ui";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText("PRECIO NORMAL", SHOP_CONFIG.width * .25, 624);
+  context.fillText(state ? `DESCUENTO -${state.discount}%` : "DESCUENTO", SHOP_CONFIG.width * .75, 624);
+
+  const body = gameState.shopActiveBody;
+  if (body) {
+    const data = body.plugin?.pachinkrawlerShop;
+    const definition = itemDefinitions.get(data?.itemId);
+    const image = itemImages.get(data?.itemId);
+    if (definition && image?.complete && image.naturalWidth) {
+      const visualScale = definition.spriteScale * (data.physicsScale || .82);
+      const origin = definition.spriteOrigin || { x: image.naturalWidth / 2, y: image.naturalHeight / 2 };
+      context.translate(body.position.x, body.position.y);
+      context.rotate(body.angle);
+      context.drawImage(
+        image,
+        -origin.x * visualScale,
+        -origin.y * visualScale,
+        image.naturalWidth * visualScale,
+        image.naturalHeight * visualScale
+      );
+    }
+  }
+  context.restore();
+});
 
 Events.on(engine, "collisionStart", event => {
   for (const pair of event.pairs) {
@@ -1563,6 +2049,12 @@ function toggleDebug() {
 }
 
 function returnToMenu() {
+  if (gameState.scene === "shop") {
+    Storage.save(gameState.run);
+    showMenu();
+    return;
+  }
+
   const hasUnsafeProgress = gameState.activeItems.size > 0 || (gameState.turn === "player" && !gameState.combatOver);
   if (hasUnsafeProgress) {
     const message = gameState.run?.isTestMode
@@ -1576,6 +2068,7 @@ function returnToMenu() {
 function handleResultAction() {
   resultModal.hidden = true;
   if (gameState.resultAction === "new-run") beginNewRun(false);
+  else if (gameState.resultAction === "shop") showShop();
   else startNextCombat();
 }
 
@@ -1631,6 +2124,10 @@ backpackModal.addEventListener("click", event => {
 });
 nextCombatButton.addEventListener("click", handleResultAction);
 resultMenuButton.addEventListener("click", showMenu);
+rerollButton.addEventListener("click", rerollShop);
+leaveShopButton.addEventListener("click", leaveShop);
+shopMenuButton.addEventListener("click", returnToMenu);
+shopBackpackButton.addEventListener("click", openBackpack);
 
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
