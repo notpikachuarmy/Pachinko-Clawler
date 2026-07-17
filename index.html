@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Pachinkrawler - prototipo web roguelike de pachinko">
-  <title>Pachinkrawler — Fase 5</title>
+  <title>Pachinkrawler — Fase 6</title>
   <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
   <main id="app" class="app-shell">
     <section id="menu-screen" class="menu-screen" aria-labelledby="game-title">
       <div class="menu-card">
-        <p class="eyebrow">Prototipo Fase 5</p>
+        <p class="eyebrow">Prototipo Fase 6</p>
         <h1 id="game-title">Pachinkrawler</h1>
         <p class="menu-copy">
           Combate por turnos, objetos físicos y una mochila que evoluciona durante la run.
@@ -21,6 +21,7 @@
           <button id="new-run-button" type="button">Iniciar nueva run</button>
           <button id="continue-button" class="secondary-button" type="button">Continuar</button>
           <button id="test-run-button" class="ghost-button" type="button">Modo de pruebas</button>
+          <button id="menu-codex-button" class="ghost-button" type="button">Abrir códice</button>
         </div>
 
         <p id="continue-summary" class="save-summary">No hay una run guardada.</p>
@@ -28,7 +29,7 @@
 
         <div class="menu-notes">
           <strong>Guardado automático</strong>
-          <span>La partida se guarda al inicio de cada turno, tras las victorias y dentro de la tienda.</span>
+          <span>La partida se guarda al inicio de cada turno, tras las victorias y durante el descanso. El códice persiste entre runs.</span>
         </div>
       </div>
     </section>
@@ -186,10 +187,87 @@
             <p>El reroll sustituye los objetos restantes y también reabastece los huecos ya comprados. El descuento no cambia.</p>
             <div class="shop-exit-actions">
               <button id="shop-backpack-button" class="secondary-button" type="button">Ver mochila</button>
-              <button id="leave-shop-button" type="button">Ir al siguiente combate</button>
+              <button id="leave-shop-button" type="button">Volver al descanso</button>
             </div>
           </section>
         </aside>
+      </section>
+    </section>
+
+
+    <section id="rest-screen" class="rest-screen" hidden aria-labelledby="rest-title">
+      <header class="rest-header">
+        <div class="rest-brand">
+          <img src="./assets/sprites/ui/rest_campfire.png" alt="Hoguera del descanso">
+          <div>
+            <p class="eyebrow">Entre combates</p>
+            <h1 id="rest-title">Zona de descanso</h1>
+            <p>Compra, mejora y especializa objetos antes de continuar la expedición.</p>
+          </div>
+        </div>
+        <div class="rest-header-actions">
+          <div class="shop-gold-badge"><img src="./assets/sprites/ui/gold_coin.png" alt=""><strong id="rest-gold-value">0</strong></div>
+          <button id="rest-menu-button" class="secondary-button" type="button">Guardar y salir</button>
+        </div>
+      </header>
+
+      <section class="rest-layout">
+        <aside class="rest-navigation">
+          <button id="open-shop-button" class="facility-card" type="button">
+            <img src="./assets/sprites/ui/shop_sign.png" alt="">
+            <span><strong>Tienda Pachinko</strong><small>Compra nuevas instancias y usa el descuento.</small></span>
+          </button>
+          <button id="open-codex-button" class="facility-card" type="button">
+            <img src="./assets/sprites/ui/codex.png" alt="">
+            <span><strong>Códice</strong><small>Objetos, runas, enemigos y evoluciones.</small></span>
+          </button>
+          <button id="rest-backpack-button" class="facility-card" type="button">
+            <img src="./assets/sprites/ui/tab_items.png" alt="">
+            <span><strong>Mochila</strong><small>Consulta todas las instancias de la run.</small></span>
+          </button>
+          <button id="continue-rest-button" class="facility-card is-primary" type="button">
+            <img src="./assets/sprites/ui/evolution.png" alt="">
+            <span><strong>Continuar expedición</strong><small>Empieza el siguiente combate.</small></span>
+          </button>
+        </aside>
+
+        <div class="rest-workshops">
+          <section class="workshop-card anvil-workshop">
+            <div class="workshop-heading">
+              <img src="./assets/sprites/ui/anvil.png" alt="Yunque">
+              <div>
+                <p class="eyebrow">Yunque</p>
+                <h2>Mejoras y evolución</h2>
+                <p>Selecciona una instancia. Las mejoras solo afectan a ese objeto.</p>
+              </div>
+            </div>
+            <div id="rest-inventory" class="rest-inventory" aria-label="Objetos disponibles para mejorar"></div>
+            <div id="anvil-detail" class="workshop-detail empty-detail">Selecciona un objeto de la mochila.</div>
+            <div class="workshop-actions">
+              <button id="upgrade-durability-button" type="button" disabled>Mejorar durabilidad</button>
+              <button id="evolve-item-button" class="evolution-button" type="button" disabled>Evolucionar</button>
+            </div>
+          </section>
+
+          <section class="workshop-card rune-workshop">
+            <div class="workshop-heading">
+              <img src="./assets/sprites/ui/rune_altar.png" alt="Altar de runas">
+              <div>
+                <p class="eyebrow">Altar rúnico</p>
+                <h2>Encantamientos</h2>
+                <p>Cada instancia admite una runa. El reroll reemplaza las tres ofertas.</p>
+              </div>
+            </div>
+            <div id="rune-offers" class="rune-offers"></div>
+            <button id="rune-reroll-button" class="reroll-button secondary-button" type="button">
+              <img src="./assets/sprites/ui/reroll.png" alt="">
+              <span>Reroll de runas</span>
+              <strong id="rune-reroll-cost">4</strong>
+              <img class="mini-coin" src="./assets/sprites/ui/gold_coin.png" alt="oro">
+            </button>
+            <p id="rest-log" class="event-log" aria-live="polite">Selecciona un objeto y una runa compatible.</p>
+          </section>
+        </div>
       </section>
     </section>
 
@@ -206,6 +284,26 @@
       </div>
       <p>El siguiente objeto se roba al azar entre las instancias disponibles. La mochila es informativa: pasa el cursor o enfoca un icono para ver sus datos.</p>
       <div id="inventory-list" class="inventory-list"></div>
+    </div>
+  </div>
+
+
+  <div id="codex-modal" class="modal" hidden>
+    <div class="modal-card codex-card" role="dialog" aria-modal="true" aria-labelledby="codex-title">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Progreso permanente</p>
+          <h2 id="codex-title">Códice</h2>
+        </div>
+        <button id="close-codex" class="secondary-button" type="button">Cerrar</button>
+      </div>
+      <nav class="codex-tabs" aria-label="Secciones del códice">
+        <button type="button" data-codex-tab="items" class="is-active"><img src="./assets/sprites/ui/tab_items.png" alt="">Objetos</button>
+        <button type="button" data-codex-tab="runes"><img src="./assets/sprites/ui/tab_runes.png" alt="">Runas</button>
+        <button type="button" data-codex-tab="enemies"><img src="./assets/sprites/ui/tab_enemies.png" alt="">Enemigos</button>
+        <button type="button" data-codex-tab="evolutions"><img src="./assets/sprites/ui/tab_evolutions.png" alt="">Evoluciones</button>
+      </nav>
+      <div id="codex-content" class="codex-content"></div>
     </div>
   </div>
 
@@ -227,6 +325,7 @@
   <script src="./js/data/items.js"></script>
   <script src="./js/data/enemies.js"></script>
   <script src="./js/data/hazards.js"></script>
+  <script src="./js/data/progression.js"></script>
   <script src="./js/systems/storage.js"></script>
   <script src="./js/main.js"></script>
 </body>

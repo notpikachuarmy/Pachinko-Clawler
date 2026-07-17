@@ -623,3 +623,202 @@ button:not(:disabled):hover { filter: brightness(1.08); transform: translateY(-1
   .shop-header-actions { align-items: stretch; flex-direction: column; }
   .shop-gold-badge { justify-content: center; }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Fase 6: descanso, yunque, runas y códice                                   */
+/* -------------------------------------------------------------------------- */
+
+.rest-screen { width: 100%; }
+.rest-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: linear-gradient(145deg, #202033, #151520);
+}
+.rest-brand { display: flex; align-items: center; gap: 14px; }
+.rest-brand > img { width: 110px; height: 90px; object-fit: contain; }
+.rest-brand h1 { margin: 0; color: var(--accent); font-size: clamp(1.8rem, 4vw, 2.6rem); }
+.rest-brand p:last-child { margin: 6px 0 0; color: var(--muted); }
+.rest-header-actions { display: flex; align-items: center; gap: 10px; }
+.rest-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 330px) minmax(680px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.rest-navigation { display: grid; gap: 10px; }
+.facility-card {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  background: linear-gradient(145deg, #24243a, #171722);
+  color: var(--text);
+  text-align: left;
+}
+.facility-card img { width: 76px; height: 76px; object-fit: contain; }
+.facility-card span { display: grid; gap: 5px; }
+.facility-card small { color: var(--muted); font-weight: 500; line-height: 1.35; }
+.facility-card.is-primary { border-color: #8e722b; background: linear-gradient(145deg, #4b3b17, #211a0d); }
+.rest-workshops { display: grid; gap: 14px; }
+.workshop-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--panel);
+}
+.workshop-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.workshop-heading > img { width: 112px; height: 96px; object-fit: contain; }
+.workshop-heading h2 { margin: 0; font-size: 1.35rem; }
+.workshop-heading p:last-child { margin: 7px 0 0; color: var(--muted); }
+.rest-inventory {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.rest-item-button {
+  position: relative;
+  min-height: 78px;
+  padding: 7px;
+  border: 1px solid #454560;
+  background: #222237;
+  color: var(--text);
+}
+.rest-item-button.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px #e7b83f35; }
+.rest-item-button > img:first-child { width: 58px; height: 58px; object-fit: contain; }
+.rest-item-button > span {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  min-width: 22px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: #0b0b12dd;
+  color: #fff;
+  font-size: .7rem;
+}
+.rest-rune-badge,
+.inventory-rune-badge {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  width: 25px !important;
+  height: 25px !important;
+  padding: 2px;
+  border: 1px solid #77718f;
+  border-radius: 50%;
+  background: #11111d;
+  object-fit: contain;
+}
+.workshop-detail {
+  padding: 12px;
+  border: 1px solid #3f3f59;
+  border-radius: 10px;
+  background: #11111b;
+}
+.empty-detail { color: var(--muted); }
+.anvil-object-summary { display: grid; grid-template-columns: 96px 1fr; gap: 12px; align-items: center; }
+.anvil-object-summary > img { width: 96px; height: 96px; object-fit: contain; }
+.anvil-object-summary h3 { margin: 0 0 7px; }
+.anvil-object-summary p { margin: 4px 0; color: var(--muted); }
+.evolution-preview {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid #343449;
+}
+.evolution-preview > img { width: 72px; height: 72px; object-fit: contain; }
+.evolution-preview > div { display: grid; gap: 5px; }
+.evolution-preview span,
+.evolution-preview small { color: var(--muted); line-height: 1.4; }
+.evolution-preview.is-locked { opacity: .7; }
+.workshop-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 10px; }
+.evolution-button { background: linear-gradient(135deg, #7350b0, #3d2a6a); color: #fff; }
+.rune-offers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-bottom: 10px; }
+.rune-offer {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #4b4768;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #292540, #171621);
+}
+.rune-offer > img { width: 60px; height: 60px; object-fit: contain; grid-row: 1; }
+.rune-offer strong { display: block; margin-bottom: 4px; }
+.rune-offer p { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.35; }
+.rune-offer button { grid-column: 1 / -1; font-size: .8rem; }
+
+.codex-card { width: min(1040px, calc(100vw - 34px)); max-height: calc(100vh - 34px); overflow: auto; }
+.codex-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+.codex-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--text);
+}
+.codex-tabs button.is-active { border-color: var(--accent); background: #473919; }
+.codex-tabs img { width: 32px; height: 32px; object-fit: contain; }
+.codex-content { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 9px; }
+.codex-entry {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  align-items: center;
+  gap: 11px;
+  min-height: 114px;
+  padding: 11px;
+  border: 1px solid #41415b;
+  border-radius: 10px;
+  background: #171724;
+}
+.codex-entry > img { width: 82px; height: 82px; object-fit: contain; }
+.codex-entry h3 { margin: 0 0 6px; font-size: 1rem; }
+.codex-entry p { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.42; }
+.codex-entry.is-locked { opacity: .68; filter: grayscale(.35); }
+.evolution-entry { grid-column: span 2; grid-template-columns: 210px 1fr; }
+.evolution-chain { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.evolution-chain img { width: 55px; height: 55px; object-fit: contain; }
+.evolution-chain span { color: var(--accent); font-weight: 900; }
+.evolution-entry small { display: block; margin-top: 7px; color: #9ad9b8; }
+
+@media (max-width: 1050px) {
+  .rest-layout { grid-template-columns: 1fr; }
+  .rest-navigation { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 760px) {
+  .rest-header { align-items: stretch; flex-direction: column; }
+  .rest-header-actions { justify-content: space-between; }
+  .rest-brand > img { width: 82px; height: 70px; }
+  .rest-navigation { grid-template-columns: 1fr; }
+  .rune-offers { grid-template-columns: 1fr; }
+  .workshop-actions { grid-template-columns: 1fr; }
+  .codex-tabs { grid-template-columns: repeat(2, 1fr); }
+  .evolution-entry { grid-column: auto; grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .rest-brand > img { display: none; }
+  .facility-card { grid-template-columns: 62px 1fr; }
+  .facility-card img { width: 58px; height: 58px; }
+  .workshop-heading > img { width: 72px; height: 72px; }
+  .anvil-object-summary { grid-template-columns: 72px 1fr; }
+  .anvil-object-summary > img { width: 72px; height: 72px; }
+  .codex-tabs button { flex-direction: column; font-size: .78rem; }
+}

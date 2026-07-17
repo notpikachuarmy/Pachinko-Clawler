@@ -67,6 +67,9 @@ const itemDefinitions = new Map((window.PACHINKRAWLER_ITEMS || []).map(item => [
 const enemyDefinitions = new Map((window.PACHINKRAWLER_ENEMIES || []).map(enemy => [enemy.id, enemy]));
 const hazardDefinitions = new Map((window.PACHINKRAWLER_HAZARDS || []).map(hazard => [hazard.id, hazard]));
 const statusDefinitions = window.PACHINKRAWLER_STATUSES || {};
+const runeDefinitions = new Map((window.PACHINKRAWLER_RUNES || []).map(rune => [rune.id, rune]));
+const evolutionDefinitions = new Map((window.PACHINKRAWLER_EVOLUTIONS || []).map(recipe => [recipe.id, recipe]));
+const evolutionBySource = new Map((window.PACHINKRAWLER_EVOLUTIONS || []).map(recipe => [recipe.sourceItemId, recipe]));
 const Storage = window.PachinkrawlerStorage;
 
 const itemImages = preloadImages(itemDefinitions, definition => definition.sprite);
@@ -76,6 +79,7 @@ const $ = selector => document.querySelector(selector);
 const menuScreen = $("#menu-screen");
 const gameScreen = $("#game-screen");
 const shopScreen = $("#shop-screen");
+const restScreen = $("#rest-screen");
 const newRunButton = $("#new-run-button");
 const continueButton = $("#continue-button");
 const testRunButton = $("#test-run-button");
@@ -129,6 +133,25 @@ const rerollCostElement = $("#reroll-cost");
 const leaveShopButton = $("#leave-shop-button");
 const shopMenuButton = $("#shop-menu-button");
 const shopBackpackButton = $("#shop-backpack-button");
+const menuCodexButton = $("#menu-codex-button");
+const restGoldValue = $("#rest-gold-value");
+const restMenuButton = $("#rest-menu-button");
+const openShopButton = $("#open-shop-button");
+const openCodexButton = $("#open-codex-button");
+const restBackpackButton = $("#rest-backpack-button");
+const continueRestButton = $("#continue-rest-button");
+const restInventoryElement = $("#rest-inventory");
+const anvilDetailElement = $("#anvil-detail");
+const upgradeDurabilityButton = $("#upgrade-durability-button");
+const evolveItemButton = $("#evolve-item-button");
+const runeOffersElement = $("#rune-offers");
+const runeRerollButton = $("#rune-reroll-button");
+const runeRerollCostElement = $("#rune-reroll-cost");
+const restLogElement = $("#rest-log");
+const codexModal = $("#codex-modal");
+const closeCodexButton = $("#close-codex");
+const codexContentElement = $("#codex-content");
+const codexTabButtons = [...document.querySelectorAll("[data-codex-tab]")];
 
 const engine = Engine.create({
   // Dormir cuerpos provocaba que escudos y libros quedasen congelados
@@ -193,7 +216,9 @@ const gameState = {
   shopBodies: [],
   shopActiveBody: null,
   shopPurchase: null,
-  shopBusy: false
+  shopBusy: false,
+  restSelectedInstanceId: null,
+  codexTab: "items"
 };
 
 function preloadImages(definitions, getSource) {
@@ -219,6 +244,8 @@ function createRun(isTestMode = false) {
   const itemIds = isTestMode ? [...itemDefinitions.keys()] : [...STARTING_LOADOUT];
   const maxHealth = isTestMode ? 30 : 20;
   const maxMana = isTestMode ? 20 : 10;
+  const meta = Storage.loadMeta();
+  const knownItems = new Set([...(meta.discoveredItems || []), ...STARTING_LOADOUT]);
 
   return {
     version: Storage.SAVE_VERSION,
@@ -239,8 +266,9 @@ function createRun(isTestMode = false) {
       .filter(itemId => itemDefinitions.has(itemId))
       .map(itemId => createInventoryInstance(itemId)),
     adaptation: {},
-    discoveredItems: isTestMode ? [...itemDefinitions.keys()] : [...new Set(STARTING_LOADOUT)],
+    discoveredItems: isTestMode ? [...itemDefinitions.keys()] : [...knownItems],
     shopState: null,
+    restState: null,
     combatSnapshot: null,
     lastResult: null
   };
@@ -251,9 +279,13 @@ function createInventoryInstance(itemId) {
   return {
     instanceId: createId("item"),
     itemId,
+    durabilityLevel: 0,
+    runes: [],
+    evolvedFrom: null,
     currentDurability: definition?.durability ?? 1,
     broken: false,
-    usedThisTurn: false
+    usedThisTurn: false,
+    temperedUsedThisTurn: false
   };
 }
 
@@ -263,16 +295,20 @@ function showMenu() {
   clearShopItem();
   closeBackpackModal();
   resultModal.hidden = true;
+  codexModal.hidden = true;
   gameScreen.hidden = true;
   shopScreen.hidden = true;
+  restScreen.hidden = true;
   menuScreen.hidden = false;
   refreshMenu();
 }
 
 function showGame() {
   gameState.scene = "game";
+  codexModal.hidden = true;
   menuScreen.hidden = true;
   shopScreen.hidden = true;
+  restScreen.hidden = true;
   gameScreen.hidden = false;
 
   // Algunos navegadores conservan el desplazamiento vertical del menú.
@@ -293,6 +329,7 @@ function refreshMenu() {
 
   const phaseLabels = {
     transition: "recompensa de victoria",
+    rest: "en la zona de descanso",
     shop: "en la tienda",
     combat: "en combate"
   };
@@ -307,6 +344,7 @@ function beginNewRun(isTestMode = false) {
   }
 
   gameState.run = createRun(isTestMode);
+  if (!isTestMode) discoverItems(STARTING_LOADOUT);
   showGame();
   startCombat();
 }
@@ -341,6 +379,11 @@ function continueSavedRun() {
     return;
   }
 
+  if (saved.phase === "rest") {
+    showRest();
+    return;
+  }
+
   if (!saved.combatSnapshot) {
     startCombat();
     return;
@@ -355,6 +398,20 @@ function migrateLoadedRun(run) {
     ? run.discoveredItems.filter(id => itemDefinitions.has(id))
     : [...new Set((run.inventory || []).map(instance => instance.itemId))];
   run.shopState = run.shopState || null;
+  run.restState = run.restState || null;
+  for (const instance of run.inventory || []) {
+    instance.durabilityLevel = Number.isFinite(instance.durabilityLevel) ? instance.durabilityLevel : 0;
+    instance.runes = Array.isArray(instance.runes) ? instance.runes.filter(id => runeDefinitions.has(id)) : [];
+    instance.evolvedFrom = instance.evolvedFrom || null;
+    instance.temperedUsedThisTurn = false;
+    instance.currentDurability = Math.min(instance.currentDurability ?? getInstanceMaxDurability(instance), getInstanceMaxDurability(instance));
+  }
+
+  const meta = Storage.loadMeta();
+  run.discoveredItems = [...new Set([...(run.discoveredItems || []), ...(meta.discoveredItems || [])])];
+  if (!run.isTestMode) {
+    Storage.updateMeta(persistent => addUnique(persistent.discoveredItems, run.discoveredItems));
+  }
 
   // Durante el prototipo, una partida de la ronda 1 que aún conserve
   // exactamente el antiguo kit 1/1/1 recibe el nuevo kit inicial 3/2/1.
@@ -384,6 +441,7 @@ function startCombat() {
   closeBackpackModal();
   resultModal.hidden = true;
   shopScreen.hidden = true;
+  restScreen.hidden = true;
   gameScreen.hidden = false;
 
   const run = gameState.run;
@@ -449,17 +507,19 @@ function saveSafePoint() {
 }
 
 function generateEnemyFormation(round) {
-  if (round === 1) return [createEnemyState(enemyDefinitions.get("slime_green"), 0, round)];
-
-  const count = round < 4 ? 2 : 3;
-  const pool = [...enemyDefinitions.values()];
-  const formation = [];
-
-  for (let index = 0; index < count; index += 1) {
-    const definition = weightedChoice(pool, enemy => enemy.weight || 1);
-    formation.push(createEnemyState(definition, index, round));
+  let formation;
+  if (round === 1) {
+    formation = [createEnemyState(enemyDefinitions.get("slime_green"), 0, round)];
+  } else {
+    const count = round < 4 ? 2 : 3;
+    const pool = [...enemyDefinitions.values()];
+    formation = [];
+    for (let index = 0; index < count; index += 1) {
+      const definition = weightedChoice(pool, enemy => enemy.weight || 1);
+      formation.push(createEnemyState(definition, index, round));
+    }
   }
-
+  discoverEnemies(formation.map(enemy => enemy.definitionId));
   return formation;
 }
 
@@ -720,10 +780,10 @@ function resetTurnPool(savedDrawOrder = null) {
   // Al comenzar un nuevo turno cada instancia vuelve a su valor base,
   // incluso si quedó rota durante el turno anterior.
   for (const instance of gameState.run.inventory) {
-    const definition = itemDefinitions.get(instance.itemId);
-    instance.currentDurability = definition?.durability ?? instance.currentDurability ?? 1;
+    instance.currentDurability = getInstanceMaxDurability(instance);
     instance.broken = false;
     instance.usedThisTurn = false;
+    instance.temperedUsedThisTurn = false;
   }
 
   const availableIds = gameState.run.inventory.map(instance => instance.instanceId);
@@ -779,10 +839,10 @@ function createItemBody(definition, inventoryInstance, x) {
     [vertices],
     {
       label: "player-item",
-      restitution: definition.restitution,
+      restitution: getInstanceRestitution(definition, inventoryInstance),
       friction: definition.friction,
       frictionAir: 0.003,
-      density: definition.density,
+      density: getInstanceDensity(definition, inventoryInstance),
       sleepThreshold: 90,
       plugin: {
         pachinkrawler: {
@@ -870,7 +930,8 @@ function resolveItem(item, result) {
   removeItem(root, false);
 
   if (!definition) return;
-  if (result === "activation") activateEffect(definition);
+  const instance = findInventoryInstance(data.inventoryInstanceId);
+  if (result === "activation") activateEffect(definition, instance);
   else addLog(`${definition.name} cayó al vacío y no se activó.`);
 
   updateUi();
@@ -894,7 +955,14 @@ function damageItemFromHazard(item, hazardBody) {
 
   const material = definition.material || "mixed";
   const multiplier = hazardDefinition.materialMultipliers?.[material] ?? 1;
-  const durabilityDamage = Math.max(1, Math.round(hazardDefinition.damage * multiplier));
+  let durabilityDamage = Math.max(1, Math.round(hazardDefinition.damage * multiplier));
+  if (hasRune(instance, "tempered") && !instance.temperedUsedThisTurn) {
+    durabilityDamage = Math.max(0, durabilityDamage - 1);
+    instance.temperedUsedThisTurn = true;
+  }
+  if (hasRune(instance, "fireproof") && hazardDefinition.id === "fire") {
+    durabilityDamage = Math.max(0, durabilityDamage - 1);
+  }
   instance.currentDurability = Math.max(0, instance.currentDurability - durabilityDamage);
   data.flashUntil = Date.now() + 220;
   const weaknessText = multiplier > 1
@@ -907,34 +975,38 @@ function damageItemFromHazard(item, hazardBody) {
     removeItem(root, false);
     addLog(`${definition.name} se rompió al tocar ${hazardDefinition.name}.${weaknessText} Volverá con durabilidad completa en tu próximo turno.`);
   } else {
-    addLog(`${hazardDefinition.name} dañó ${definition.name} por ${durabilityDamage}: ${instance.currentDurability}/${definition.durability}.${weaknessText}`);
+    addLog(`${hazardDefinition.name} dañó ${definition.name} por ${durabilityDamage}: ${instance.currentDurability}/${getInstanceMaxDurability(instance)}.${weaknessText}`);
     Sleeping.set(root, false);
   }
   updateUi();
 }
 
-function activateEffect(definition) {
+function activateEffect(definition, instance) {
   if (!gameState.run.discoveredItems.includes(definition.id)) {
     gameState.run.discoveredItems.push(definition.id);
+    discoverItems([definition.id]);
     addLog(`Códice actualizado: has descubierto el efecto de ${definition.name}.`);
   }
-  const effect = definition.effect || { type: "damage", value: 1, target: "front" };
+  const effect = getEffectiveEffect(definition, instance);
 
   if (effect.type === "armor") {
     gameState.run.player.armor += effect.value;
     addLog(`${definition.name}: +${effect.value} de armadura.`);
+    triggerRuneAfterActivation(definition, instance);
     return;
   }
 
   if (effect.type === "heal") {
     const healed = healPlayer(effect.value);
     addLog(`${definition.name}: +${healed} de vida.`);
+    triggerRuneAfterActivation(definition, instance);
     return;
   }
 
   if (effect.type === "mana") {
     const restored = restoreMana(effect.value);
     addLog(`${definition.name}: +${restored} de maná.`);
+    triggerRuneAfterActivation(definition, instance);
     return;
   }
 
@@ -942,6 +1014,7 @@ function activateEffect(definition) {
     if (!spendMana(effect.manaCost, definition.name)) return;
     const healed = healPlayer(effect.value);
     addLog(`${definition.name}: -${effect.manaCost} MP y +${healed} de vida.`);
+    triggerRuneAfterActivation(definition, instance);
     return;
   }
 
@@ -952,6 +1025,7 @@ function activateEffect(definition) {
     const outcome = dealDamage(target, effect.value, effect.armorPierce || 0);
     applyOptionalStatus(target, effect.status);
     addLog(`${definition.name}: -${effect.manaCost} MP, ${outcome.hpDamage} de daño a ${target.name}${statusLog(effect.status)}.`);
+    triggerRuneAfterActivation(definition, instance);
     checkCombatVictory();
     return;
   }
@@ -968,6 +1042,7 @@ function activateEffect(definition) {
       message += ` y ${splashOutcome.hpDamage} a ${second.name}`;
     }
     addLog(`${message}.`);
+    triggerRuneAfterActivation(definition, instance);
     checkCombatVictory();
     return;
   }
@@ -981,6 +1056,7 @@ function activateEffect(definition) {
   const outcome = dealDamage(target, value, effect.armorPierce || 0);
   applyOptionalStatus(target, effect.status);
   addLog(`${definition.name}: ${outcome.hpDamage} de daño a ${target.name}${outcome.blocked ? ` (${outcome.blocked} bloqueado)` : ""}${statusLog(effect.status)}.`);
+  triggerRuneAfterActivation(definition, instance);
   checkCombatVictory();
 }
 
@@ -1072,16 +1148,17 @@ function finishCombatVictory() {
   const hpRestored = gameState.run.player.hp - hpBeforeRecovery;
 
   for (const instance of gameState.run.inventory) {
-    const definition = itemDefinitions.get(instance.itemId);
-    instance.currentDurability = definition?.durability ?? instance.currentDurability;
+    instance.currentDurability = getInstanceMaxDurability(instance);
     instance.broken = false;
     instance.usedThisTurn = false;
+    instance.temperedUsedThisTurn = false;
   }
 
   const goldReward = 10 + Math.floor(Math.random() * 4);
   gameState.run.gold += goldReward;
   gameState.run.phase = "transition";
   gameState.run.shopState = null;
+  gameState.run.restState = null;
   gameState.run.combatSnapshot = null;
   gameState.run.lastResult = {
     round: gameState.run.round,
@@ -1119,16 +1196,16 @@ function showVictoryResult(result, resumed) {
   const safeResult = result || { round: gameState.run.round, goldReward: 0, hpRestored: 0, defeated: [] };
   resultEyebrow.textContent = resumed ? "Partida guardada" : "Combate terminado";
   resultTitle.textContent = "Victoria";
-  resultMessage.textContent = "Has recuperado la vida. Ahora puedes gastar el oro en la Tienda Pachinko o ahorrarlo para más adelante.";
+  resultMessage.textContent = "Has recuperado la vida. La zona de descanso está disponible antes del siguiente combate.";
   resultDetails.innerHTML = `
     <span>Ronda superada: <strong>${safeResult.round}</strong></span>
     <span>Oro obtenido: <strong>+${safeResult.goldReward}</strong></span>
     <span>Vida restaurada para el siguiente combate: <strong>${gameState.run.player.hp}/${gameState.run.player.maxHp}</strong>${safeResult.hpRestored ? ` (+${safeResult.hpRestored})` : ""}.</span>
     <span>Durabilidad de la mochila restaurada.</span>
   `;
-  nextCombatButton.textContent = "Ir a la tienda";
+  nextCombatButton.textContent = "Ir a la zona de descanso";
   nextCombatButton.hidden = false;
-  gameState.resultAction = "shop";
+  gameState.resultAction = "rest";
   resultModal.hidden = false;
 }
 
@@ -1147,9 +1224,452 @@ function startNextCombat() {
   gameState.run.round += 1;
   gameState.run.phase = "combat";
   gameState.run.shopState = null;
+  gameState.run.restState = null;
   gameState.run.lastResult = null;
   startCombat();
 }
+
+function hasRune(instance, runeId) {
+  return Boolean(instance?.runes?.includes(runeId));
+}
+
+function getInstanceMaxDurability(instance) {
+  const definition = itemDefinitions.get(instance?.itemId);
+  if (!definition) return 1;
+  const levelBonus = Math.max(0, instance?.durabilityLevel || 0);
+  const metalBonus = hasRune(instance, "metal") ? 1 : 0;
+  return definition.durability + levelBonus + metalBonus;
+}
+
+function getInstanceDensity(definition, instance) {
+  return (definition.density || 0.002) * (hasRune(instance, "heavy") ? 1.45 : 1);
+}
+
+function getInstanceRestitution(definition, instance) {
+  let value = definition.restitution ?? 0.4;
+  if (hasRune(instance, "heavy")) value *= 0.72;
+  if (hasRune(instance, "bouncy")) value += 0.18;
+  return clamp(value, 0.12, 0.96);
+}
+
+function getEffectiveEffect(definition, instance) {
+  const effect = clone(definition.effect || { type: "damage", value: 1, target: "front" });
+  if (hasRune(instance, "sharp") && definition.category === "weapon") {
+    if (Number.isFinite(effect.value)) effect.value += 1;
+    if (Number.isFinite(effect.splash)) effect.splash += 1;
+  }
+  if (hasRune(instance, "arcane") && definition.category === "spellbook" && Number.isFinite(effect.manaCost)) {
+    effect.manaCost = Math.max(1, effect.manaCost - 1);
+  }
+  return effect;
+}
+
+function triggerRuneAfterActivation(definition, instance) {
+  if (definition.category === "weapon" && hasRune(instance, "vampiric")) {
+    const healed = healPlayer(1);
+    if (healed > 0) addLog(`Runa vampírica: +${healed} de vida.`);
+  }
+}
+
+function addUnique(values, additions) {
+  for (const value of additions) {
+    if (value && !values.includes(value)) values.push(value);
+  }
+}
+
+function discoverItems(ids) {
+  if (gameState.run?.isTestMode) return;
+  Storage.updateMeta(meta => addUnique(meta.discoveredItems, ids.filter(id => itemDefinitions.has(id))));
+}
+
+function discoverRunes(ids) {
+  if (gameState.run?.isTestMode) return;
+  Storage.updateMeta(meta => addUnique(meta.discoveredRunes, ids.filter(id => runeDefinitions.has(id))));
+}
+
+function discoverEnemies(ids) {
+  if (gameState.run?.isTestMode) return;
+  Storage.updateMeta(meta => addUnique(meta.discoveredEnemies, ids.filter(id => enemyDefinitions.has(id))));
+}
+
+function discoverEvolution(id) {
+  if (gameState.run?.isTestMode) return;
+  Storage.updateMeta(meta => addUnique(meta.discoveredEvolutions, evolutionDefinitions.has(id) ? [id] : []));
+}
+
+function createRestState(round) {
+  const runeOffers = generateRuneOffers();
+  return {
+    round,
+    runeOffers,
+    runeRerollCount: 0
+  };
+}
+
+function generateRuneOffers() {
+  const ids = shuffle([...runeDefinitions.keys()]).slice(0, 3);
+  discoverRunes(ids);
+  return ids;
+}
+
+function showRest() {
+  const run = gameState.run;
+  if (!run) return;
+
+  clearActiveItems();
+  clearShopItem();
+  closeBackpackModal();
+  codexModal.hidden = true;
+  resultModal.hidden = true;
+  menuScreen.hidden = true;
+  gameScreen.hidden = true;
+  shopScreen.hidden = true;
+  restScreen.hidden = false;
+  gameState.scene = "rest";
+  gameState.turn = "ended";
+  gameState.combatOver = true;
+
+  restorePlayerBetweenCombats();
+  run.phase = "rest";
+  if (!run.restState || run.restState.round !== run.round) {
+    run.restState = createRestState(run.round);
+  }
+  if (!run.inventory.some(instance => instance.instanceId === gameState.restSelectedInstanceId)) {
+    gameState.restSelectedInstanceId = run.inventory[0]?.instanceId || null;
+  }
+  updateRestUi();
+  Storage.save(run);
+  window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+}
+
+function getRestSelectedInstance() {
+  return gameState.run?.inventory.find(instance => instance.instanceId === gameState.restSelectedInstanceId) || null;
+}
+
+function getDurabilityUpgradeCost(level) {
+  return [8, 13, 20][level] ?? null;
+}
+
+function getRuneRerollCost(count) {
+  const costs = [4, 7, 11, 16];
+  return costs[count] ?? (16 + (count - 3) * 6);
+}
+
+function renderRestInventory() {
+  restInventoryElement.innerHTML = "";
+  const run = gameState.run;
+  if (!run) return;
+
+  for (const instance of run.inventory) {
+    const definition = itemDefinitions.get(instance.itemId);
+    if (!definition) continue;
+    const rune = runeDefinitions.get(instance.runes?.[0]);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "rest-item-button";
+    button.classList.toggle("is-selected", instance.instanceId === gameState.restSelectedInstanceId);
+    button.title = `${definition.name} · Durabilidad ${getInstanceMaxDurability(instance)}${rune ? ` · ${rune.name}` : " · Sin runa"}`;
+    button.innerHTML = `
+      <img src="${definition.sprite}" alt="${definition.name}">
+      <span>${getInstanceMaxDurability(instance)}</span>
+      ${rune ? `<img class="rest-rune-badge" src="${rune.icon}" alt="${rune.name}">` : ""}
+    `;
+    button.addEventListener("click", () => {
+      gameState.restSelectedInstanceId = instance.instanceId;
+      updateRestUi();
+    });
+    restInventoryElement.append(button);
+  }
+}
+
+function renderAnvilDetail() {
+  const run = gameState.run;
+  const instance = getRestSelectedInstance();
+  if (!run || !instance) {
+    anvilDetailElement.className = "workshop-detail empty-detail";
+    anvilDetailElement.textContent = "Selecciona un objeto de la mochila.";
+    upgradeDurabilityButton.disabled = true;
+    evolveItemButton.disabled = true;
+    return;
+  }
+
+  const definition = itemDefinitions.get(instance.itemId);
+  const level = instance.durabilityLevel || 0;
+  const upgradeCost = getDurabilityUpgradeCost(level);
+  const rune = runeDefinitions.get(instance.runes?.[0]);
+  const recipe = evolutionBySource.get(instance.itemId);
+  const evolutionStatus = recipe ? getEvolutionStatus(instance, recipe) : null;
+  const target = recipe ? itemDefinitions.get(recipe.targetItemId) : null;
+
+  anvilDetailElement.className = "workshop-detail";
+  anvilDetailElement.innerHTML = `
+    <div class="anvil-object-summary">
+      <img src="${definition.sprite}" alt="${definition.name}">
+      <div>
+        <h3>${definition.name}</h3>
+        <p>${effectTextWithInstance(definition, instance)}</p>
+        <p>Durabilidad máxima: <strong>${getInstanceMaxDurability(instance)}</strong> · Mejora ${level}/3</p>
+        <p>Runa: <strong>${rune?.name || "Ninguna"}</strong></p>
+      </div>
+    </div>
+    <div class="evolution-preview ${recipe ? "" : "is-locked"}">
+      <img src="${recipe ? target.sprite : "./assets/sprites/ui/lock.png"}" alt="">
+      <div>
+        <strong>${recipe ? `Evolución: ${target.name}` : "Este objeto no tiene evolución conocida"}</strong>
+        <span>${recipe ? evolutionRequirementText(recipe) : "No todos los objetos pueden evolucionar."}</span>
+        ${recipe ? `<small>${recipe.description}</small>` : ""}
+      </div>
+    </div>
+  `;
+
+  upgradeDurabilityButton.textContent = upgradeCost === null
+    ? "Durabilidad al máximo"
+    : `Mejorar durabilidad · ${upgradeCost} oro`;
+  upgradeDurabilityButton.disabled = upgradeCost === null || run.gold < upgradeCost;
+
+  evolveItemButton.textContent = recipe ? `Evolucionar · ${recipe.cost} oro` : "Sin evolución";
+  evolveItemButton.disabled = !recipe || !evolutionStatus.ready || run.gold < recipe.cost;
+  evolveItemButton.title = recipe && !evolutionStatus.ready ? evolutionStatus.missing.join(" · ") : "";
+}
+
+function evolutionRequirementText(recipe) {
+  const runeNames = (recipe.requirements.runeIds || [])
+    .map(id => runeDefinitions.get(id)?.name || id)
+    .join(", ");
+  return `Requiere mejora de durabilidad ${recipe.requirements.durabilityLevel}/3${runeNames ? ` y ${runeNames}` : ""}. Coste: ${recipe.cost} oro.`;
+}
+
+function getEvolutionStatus(instance, recipe) {
+  const missing = [];
+  if ((instance.durabilityLevel || 0) < (recipe.requirements.durabilityLevel || 0)) {
+    missing.push(`Mejora la durabilidad a nivel ${recipe.requirements.durabilityLevel}`);
+  }
+  for (const runeId of recipe.requirements.runeIds || []) {
+    if (!hasRune(instance, runeId)) missing.push(`Aplica ${runeDefinitions.get(runeId)?.name || runeId}`);
+  }
+  return { ready: missing.length === 0, missing };
+}
+
+function renderRuneOffers() {
+  runeOffersElement.innerHTML = "";
+  const run = gameState.run;
+  const state = run?.restState;
+  const selected = getRestSelectedInstance();
+  const selectedDefinition = selected ? itemDefinitions.get(selected.itemId) : null;
+  if (!run || !state) return;
+
+  for (const runeId of state.runeOffers) {
+    const rune = runeDefinitions.get(runeId);
+    if (!rune) continue;
+    const compatible = selectedDefinition && rune.categories.includes(selectedDefinition.category);
+    const alreadyRuned = Boolean(selected?.runes?.length);
+    const card = document.createElement("article");
+    card.className = "rune-offer";
+    card.innerHTML = `
+      <img src="${rune.icon}" alt="${rune.name}">
+      <div><strong>${rune.name}</strong><p>${rune.description}</p></div>
+      <button type="button">Aplicar · ${rune.price} oro</button>
+    `;
+    const button = card.querySelector("button");
+    button.disabled = !selected || !compatible || alreadyRuned || run.gold < rune.price;
+    button.title = !selected
+      ? "Selecciona una instancia."
+      : alreadyRuned
+        ? "La instancia ya tiene una runa."
+        : !compatible
+          ? "Esta runa no es compatible con la categoría del objeto."
+          : run.gold < rune.price
+            ? `Necesitas ${rune.price} de oro.`
+            : "Aplicar a la instancia seleccionada.";
+    button.addEventListener("click", () => applyRuneToSelected(runeId));
+    runeOffersElement.append(card);
+  }
+}
+
+function updateRestUi() {
+  if (!gameState.run) return;
+  restGoldValue.textContent = gameState.run.gold;
+  renderRestInventory();
+  renderAnvilDetail();
+  renderRuneOffers();
+  const cost = getRuneRerollCost(gameState.run.restState?.runeRerollCount || 0);
+  runeRerollCostElement.textContent = cost;
+  runeRerollButton.disabled = gameState.run.gold < cost;
+}
+
+function upgradeSelectedDurability() {
+  const run = gameState.run;
+  const instance = getRestSelectedInstance();
+  if (!run || !instance) return;
+  const level = instance.durabilityLevel || 0;
+  const cost = getDurabilityUpgradeCost(level);
+  if (cost === null || run.gold < cost) return;
+
+  run.gold -= cost;
+  instance.durabilityLevel = level + 1;
+  instance.currentDurability = getInstanceMaxDurability(instance);
+  restLogElement.textContent = `${itemDefinitions.get(instance.itemId).name} alcanza mejora de durabilidad ${instance.durabilityLevel}/3.`;
+  Storage.save(run);
+  updateRestUi();
+}
+
+function applyRuneToSelected(runeId) {
+  const run = gameState.run;
+  const instance = getRestSelectedInstance();
+  const rune = runeDefinitions.get(runeId);
+  const definition = itemDefinitions.get(instance?.itemId);
+  if (!run || !instance || !rune || !definition) return;
+  if (instance.runes?.length || !rune.categories.includes(definition.category) || run.gold < rune.price) return;
+
+  run.gold -= rune.price;
+  instance.runes = [runeId];
+  instance.currentDurability = getInstanceMaxDurability(instance);
+  discoverRunes([runeId]);
+  restLogElement.textContent = `${rune.name} aplicada a ${definition.name}.`;
+  Storage.save(run);
+  updateRestUi();
+}
+
+function rerollRunes() {
+  const run = gameState.run;
+  const state = run?.restState;
+  if (!run || !state) return;
+  const cost = getRuneRerollCost(state.runeRerollCount || 0);
+  if (run.gold < cost) {
+    restLogElement.textContent = `Necesitas ${cost} de oro para rerollear las runas.`;
+    return;
+  }
+  run.gold -= cost;
+  state.runeRerollCount = (state.runeRerollCount || 0) + 1;
+  state.runeOffers = generateRuneOffers();
+  restLogElement.textContent = `Las runas ofrecidas han cambiado por ${cost} de oro.`;
+  Storage.save(run);
+  updateRestUi();
+}
+
+function evolveSelectedItem() {
+  const run = gameState.run;
+  const instance = getRestSelectedInstance();
+  const recipe = evolutionBySource.get(instance?.itemId);
+  if (!run || !instance || !recipe) return;
+  const status = getEvolutionStatus(instance, recipe);
+  if (!status.ready || run.gold < recipe.cost) return;
+
+  const source = itemDefinitions.get(instance.itemId);
+  const target = itemDefinitions.get(recipe.targetItemId);
+  run.gold -= recipe.cost;
+  instance.evolvedFrom = source.id;
+  instance.itemId = target.id;
+  instance.durabilityLevel = 0;
+  instance.runes = (instance.runes || []).filter(id => !(recipe.consumesRunes || []).includes(id));
+  instance.currentDurability = getInstanceMaxDurability(instance);
+  instance.broken = false;
+  instance.usedThisTurn = false;
+  addUnique(run.discoveredItems, [target.id]);
+  discoverItems([target.id]);
+  discoverEvolution(recipe.id);
+  restLogElement.textContent = `${source.name} ha evolucionado a ${target.name}.`;
+  Storage.save(run);
+  updateRestUi();
+}
+
+function openCodex(tab = gameState.codexTab || "items") {
+  gameState.codexTab = tab;
+  codexModal.hidden = false;
+  renderCodex();
+}
+
+function closeCodex() {
+  codexModal.hidden = true;
+}
+
+function renderCodex() {
+  const meta = Storage.loadMeta();
+  codexTabButtons.forEach(button => button.classList.toggle("is-active", button.dataset.codexTab === gameState.codexTab));
+  codexContentElement.innerHTML = "";
+
+  if (gameState.codexTab === "items") {
+    for (const definition of itemDefinitions.values()) {
+      const known = meta.discoveredItems.includes(definition.id);
+      codexContentElement.append(createCodexEntry(
+        known ? definition.sprite : "./assets/sprites/ui/lock.png",
+        known ? definition.name : "Objeto desconocido",
+        known ? `${effectText(definition)} · ${materialName(definition.material)} · Durabilidad base ${definition.durability}. ${definition.description}` : "Actívalo con éxito durante una run para revelar su efecto.",
+        known
+      ));
+    }
+    return;
+  }
+
+  if (gameState.codexTab === "runes") {
+    for (const rune of runeDefinitions.values()) {
+      const known = meta.discoveredRunes.includes(rune.id);
+      codexContentElement.append(createCodexEntry(
+        known ? rune.icon : "./assets/sprites/ui/lock.png",
+        known ? rune.name : "Runa desconocida",
+        known ? `${rune.description} Compatible con: ${rune.categories.map(categoryName).join(", ")}.` : "Encuéntrala en un altar rúnico para revelar sus datos.",
+        known
+      ));
+    }
+    return;
+  }
+
+  if (gameState.codexTab === "enemies") {
+    for (const enemy of enemyDefinitions.values()) {
+      const known = meta.discoveredEnemies.includes(enemy.id);
+      codexContentElement.append(createCodexEntry(
+        known ? enemy.sprite : "./assets/sprites/ui/lock.png",
+        known ? enemy.name : "Enemigo desconocido",
+        known ? `Vida base ${enemy.maxHp} · Ataque ${enemy.attack} · Armadura ${enemy.armor}. La especie se adapta cada 3 derrotas durante una run.` : "Encuéntralo en combate para registrar la especie.",
+        known
+      ));
+    }
+    return;
+  }
+
+  for (const recipe of evolutionDefinitions.values()) {
+    const source = itemDefinitions.get(recipe.sourceItemId);
+    const target = itemDefinitions.get(recipe.targetItemId);
+    const runeIds = recipe.requirements.runeIds || [];
+    const requirementsKnown = meta.discoveredItems.includes(source.id) && runeIds.every(id => meta.discoveredRunes.includes(id));
+    const completed = meta.discoveredEvolutions.includes(recipe.id);
+    const known = requirementsKnown || completed;
+    const entry = document.createElement("article");
+    entry.className = `codex-entry evolution-entry ${known ? "is-known" : "is-locked"}`;
+    entry.innerHTML = known ? `
+      <div class="evolution-chain">
+        <img src="${source.sprite}" alt="${source.name}">
+        <span>+</span>
+        ${runeIds.map(id => `<img src="${runeDefinitions.get(id).icon}" alt="${runeDefinitions.get(id).name}">`).join("")}
+        <span>→</span>
+        <img src="${target.sprite}" alt="${target.name}">
+      </div>
+      <div><h3>${source.name} → ${target.name}</h3><p>${evolutionRequirementText(recipe)}</p><p><strong>Resultado:</strong> ${effectText(target)} · Durabilidad base ${target.durability}. ${recipe.description}</p>${completed ? "<small>Evolución completada al menos una vez.</small>" : ""}</div>
+    ` : `
+      <img src="./assets/sprites/ui/lock.png" alt="Bloqueado">
+      <div><h3>Receta desconocida</h3><p>Descubre el objeto de origen y las runas requeridas.</p></div>
+    `;
+    codexContentElement.append(entry);
+  }
+}
+
+function createCodexEntry(image, title, description, known) {
+  const entry = document.createElement("article");
+  entry.className = `codex-entry ${known ? "is-known" : "is-locked"}`;
+  entry.innerHTML = `<img src="${image}" alt=""><div><h3>${title}</h3><p>${description}</p></div>`;
+  return entry;
+}
+
+function categoryName(category) {
+  const names = { weapon: "armas", shield: "escudos", potion: "pociones", spellbook: "libros" };
+  return names[category] || category;
+}
+
+function effectTextWithInstance(definition, instance) {
+  const effect = getEffectiveEffect(definition, instance);
+  return effectText({ ...definition, effect });
+}
+
 
 function showShop() {
   const run = gameState.run;
@@ -1158,9 +1678,11 @@ function showShop() {
   clearActiveItems();
   clearShopItem();
   closeBackpackModal();
+  codexModal.hidden = true;
   resultModal.hidden = true;
   menuScreen.hidden = true;
   gameScreen.hidden = true;
+  restScreen.hidden = true;
   shopScreen.hidden = false;
   gameState.scene = "shop";
   gameState.turn = "ended";
@@ -1496,7 +2018,7 @@ function clearShopItem() {
 function leaveShop() {
   if (gameState.shopBusy || !gameState.run) return;
   Storage.save(gameState.run);
-  startNextCombat();
+  showRest();
 }
 
 Events.on(shopEngine, "collisionStart", event => {
@@ -1741,11 +2263,14 @@ function renderInventory() {
     button.classList.toggle("is-broken", instance.broken);
     button.classList.add("is-readonly");
     button.setAttribute("aria-disabled", "true");
-    button.setAttribute("aria-label", `${definition.name}. ${effectText(definition)}. Material ${materialName(definition.material)}. Durabilidad ${instance.currentDurability} de ${definition.durability}.`);
-    button.dataset.tooltip = `${definition.name} · ${effectText(definition)} · ${materialName(definition.material)} · Durabilidad ${instance.currentDurability}/${definition.durability}. ${definition.description}`;
+    const rune = runeDefinitions.get(instance.runes?.[0]);
+    const maxDurability = getInstanceMaxDurability(instance);
+    button.setAttribute("aria-label", `${definition.name}. ${effectTextWithInstance(definition, instance)}. Material ${materialName(definition.material)}. Durabilidad ${instance.currentDurability} de ${maxDurability}.${rune ? ` Runa ${rune.name}.` : ""}`);
+    button.dataset.tooltip = `${definition.name} · ${effectTextWithInstance(definition, instance)} · ${materialName(definition.material)} · Durabilidad ${instance.currentDurability}/${maxDurability}${rune ? ` · ${rune.name}` : ""}. ${definition.description}`;
     button.innerHTML = `
       <img src="${definition.sprite}" alt="">
-      <span class="durability-pip">${instance.currentDurability}/${definition.durability}</span>
+      <span class="durability-pip">${instance.currentDurability}/${maxDurability}</span>
+      ${rune ? `<img class="inventory-rune-badge" src="${rune.icon}" alt="${rune.name}">` : ""}
     `;
     inventoryList.append(button);
   }
@@ -1940,7 +2465,7 @@ function updateUi() {
   poolCountElement.textContent = remainingItems().length;
   selectedNameElement.textContent = definition?.name || "Sin objetos";
   selectedDetailElement.textContent = definition && selectedInstance
-    ? `${effectText(definition)} · ${materialName(definition.material)} · Durabilidad ${selectedInstance.currentDurability}/${definition.durability}`
+    ? `${effectTextWithInstance(definition, selectedInstance)} · ${materialName(definition.material)} · Durabilidad ${selectedInstance.currentDurability}/${getInstanceMaxDurability(selectedInstance)}${selectedInstance.runes?.length ? ` · ${runeDefinitions.get(selectedInstance.runes[0])?.name}` : ""}`
     : "Pasa el turno cuando hayas terminado.";
   selectedImageElement.hidden = !definition;
   if (definition) {
@@ -2049,7 +2574,7 @@ function toggleDebug() {
 }
 
 function returnToMenu() {
-  if (gameState.scene === "shop") {
+  if (gameState.scene === "shop" || gameState.scene === "rest") {
     Storage.save(gameState.run);
     showMenu();
     return;
@@ -2068,6 +2593,7 @@ function returnToMenu() {
 function handleResultAction() {
   resultModal.hidden = true;
   if (gameState.resultAction === "new-run") beginNewRun(false);
+  else if (gameState.resultAction === "rest") showRest();
   else if (gameState.resultAction === "shop") showShop();
   else startNextCombat();
 }
@@ -2128,10 +2654,28 @@ rerollButton.addEventListener("click", rerollShop);
 leaveShopButton.addEventListener("click", leaveShop);
 shopMenuButton.addEventListener("click", returnToMenu);
 shopBackpackButton.addEventListener("click", openBackpack);
+menuCodexButton.addEventListener("click", () => openCodex("items"));
+restMenuButton.addEventListener("click", returnToMenu);
+openShopButton.addEventListener("click", showShop);
+openCodexButton.addEventListener("click", () => openCodex("items"));
+restBackpackButton.addEventListener("click", openBackpack);
+continueRestButton.addEventListener("click", startNextCombat);
+upgradeDurabilityButton.addEventListener("click", upgradeSelectedDurability);
+evolveItemButton.addEventListener("click", evolveSelectedItem);
+runeRerollButton.addEventListener("click", rerollRunes);
+closeCodexButton.addEventListener("click", closeCodex);
+codexModal.addEventListener("click", event => {
+  if (event.target === codexModal) closeCodex();
+});
+codexTabButtons.forEach(button => button.addEventListener("click", () => {
+  gameState.codexTab = button.dataset.codexTab;
+  renderCodex();
+}));
 
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
     if (!backpackModal.hidden) closeBackpackModal();
+    else if (!codexModal.hidden) closeCodex();
   }
 });
 
