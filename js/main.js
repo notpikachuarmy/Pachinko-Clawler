@@ -15,7 +15,7 @@ const {
 if (window.decomp) Common.setDecomp(window.decomp);
 
 const CONFIG = Object.freeze({
-  boardVersion: 4,
+  boardVersion: 5,
   boardWidth: 960,
   boardHeight: 1500,
   launchAreaHeight: 120,
@@ -471,17 +471,22 @@ function restoreCombatSnapshot(snapshot) {
   gameState.turn = "player";
   gameState.combatOver = false;
   resetTurnPool(snapshot.drawOrder);
-  const restoredBoard = snapshot.board?.version === CONFIG.boardVersion
-    ? clone(snapshot.board)
+  const normalizedSavedSlots = normalizeBoardSlotTypes(snapshot.board?.slots);
+  const canRestoreSavedBoard = snapshot.board?.version === CONFIG.boardVersion && normalizedSavedSlots;
+  const restoredBoard = canRestoreSavedBoard
+    ? { ...clone(snapshot.board), slots: normalizedSavedSlots }
     : generateBoardConfiguration(run.round, run.lastSlotSignature);
-  if (snapshot.board?.version !== CONFIG.boardVersion) {
+
+  if (!canRestoreSavedBoard) {
     run.lastSlotSignature = restoredBoard.slots.slice(1, -1).join("|");
   }
+
   createBoard(restoredBoard);
-  addLog(snapshot.board?.version === CONFIG.boardVersion
+  addLog(canRestoreSavedBoard
     ? "Partida retomada al inicio del último turno guardado."
-    : "Partida retomada con el tablero profundo actualizado.");
+    : "Partida retomada con una zona inferior válida regenerada.");
   updateUi();
+  saveSafePoint();
 }
 
 function saveSafePoint() {
@@ -609,18 +614,41 @@ function generateBoardConfiguration(round, previousSlotSignature = "") {
   return { version: CONFIG.boardVersion, slots, hazards };
 }
 
+function normalizeBoardSlotTypes(rawSlots) {
+  if (!Array.isArray(rawSlots) || rawSlots.length !== 5) return null;
+
+  const validTypes = new Set(["wall", "activation", "void"]);
+  const types = rawSlots.map(entry => {
+    if (typeof entry === "string") return entry;
+    if (entry && typeof entry.type === "string") return entry.type;
+    return null;
+  });
+
+  if (types.some(type => !validTypes.has(type))) return null;
+  if (types[0] !== "wall" || types[4] !== "wall") return null;
+  if (!types.slice(1, 4).includes("activation")) return null;
+  return types;
+}
+
 function createBoard(boardConfig) {
   clearBoardBodies();
+
+  const fallbackBoard = generateBoardConfiguration(
+    gameState.run?.round || 1,
+    gameState.run?.lastSlotSignature || ""
+  );
+  const slotTypes = normalizeBoardSlotTypes(boardConfig?.slots) || fallbackBoard.slots;
+  const hazards = Array.isArray(boardConfig?.hazards) ? boardConfig.hazards : fallbackBoard.hazards;
   const bodies = [
     ...createWalls(),
-    ...createPegs(boardConfig.hazards || []),
+    ...createPegs(hazards),
     ...createLowerGuides(),
-    ...createBottomZone(boardConfig.slots || ["wall", "activation", "void", "activation", "wall"])
+    ...createBottomZone(slotTypes)
   ];
   gameState.boardBodies = bodies;
   Composite.add(engine.world, bodies);
 
-  gameState.hazardBodies = (boardConfig.hazards || [])
+  gameState.hazardBodies = hazards
     .map(layout => createHazardBody(layout))
     .filter(Boolean);
   Composite.add(engine.world, gameState.hazardBodies);
