@@ -39,7 +39,7 @@ const CONFIG = Object.freeze({
 });
 
 const SHOP_CONFIG = Object.freeze({
-  width: 760,
+  width: 900,
   height: 660,
   launchY: 54,
   sensorY: 625,
@@ -1341,16 +1341,14 @@ function createShopBoard() {
     Bodies.rectangle(SHOP_CONFIG.width / 2, 570, 18, 155, wallOptions)
   ];
 
-  // La tienda debe sentirse más limpia que el tablero de combate:
-  // menos clavos, corredores amplios y sin plataformas inclinadas en la salida.
-  // Así se reducen los atascos y el resultado sigue dependiendo del rebote.
-  const pegSpacing = 96;
+  // Mini pachinko de tienda: más ancho, con gran separación entre tornillos
+  // y sin la última fila inferior para que escudos y objetos grandes puedan pasar.
+  const pegSpacing = 118;
   const pegRows = [
-    { y: 128, columns: 7, startX: 92, skip: [] },
-    { y: 192, columns: 6, startX: 140, skip: [2] },
-    { y: 258, columns: 7, startX: 92, skip: [4] },
-    { y: 326, columns: 6, startX: 140, skip: [1, 4] },
-    { y: 396, columns: 5, startX: 188, skip: [2] }
+    { y: 136, columns: 7, startX: 96, skip: [] },
+    { y: 210, columns: 6, startX: 155, skip: [2] },
+    { y: 288, columns: 7, startX: 96, skip: [4] },
+    { y: 372, columns: 6, startX: 155, skip: [1, 4] }
   ];
 
   for (const row of pegRows) {
