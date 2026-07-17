@@ -442,7 +442,7 @@ button:not(:disabled):hover { filter: brightness(1.08); transform: translateY(-1
 
 .shop-layout {
   display: grid;
-  grid-template-columns: minmax(520px, 720px) minmax(420px, 1fr);
+  grid-template-columns: minmax(620px, 860px) minmax(420px, 1fr);
   gap: 14px;
   align-items: start;
 }

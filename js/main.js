@@ -39,7 +39,7 @@ const CONFIG = Object.freeze({
 });
 
 const SHOP_CONFIG = Object.freeze({
-  width: 620,
+  width: 760,
   height: 660,
   launchY: 54,
   sensorY: 625,
@@ -1341,16 +1341,24 @@ function createShopBoard() {
     Bodies.rectangle(SHOP_CONFIG.width / 2, 570, 18, 155, wallOptions)
   ];
 
-  for (let row = 0; row < 7; row += 1) {
-    const spacing = 74;
-    const offset = row % 2 ? spacing / 2 : 0;
-    const y = 135 + row * 61;
-    for (let column = 0; column < 8; column += 1) {
-      const x = 48 + column * spacing + offset;
-      if (x > SHOP_CONFIG.width - 38) continue;
-      // Abrimos algunos corredores sin hacer el resultado totalmente predecible.
-      if ((row === 1 && column === 3) || (row === 4 && column === 1) || (row === 5 && column === 5)) continue;
-      bodies.push(Bodies.circle(x, y, 9, {
+  // La tienda debe sentirse más limpia que el tablero de combate:
+  // menos clavos, corredores amplios y sin plataformas inclinadas en la salida.
+  // Así se reducen los atascos y el resultado sigue dependiendo del rebote.
+  const pegSpacing = 96;
+  const pegRows = [
+    { y: 128, columns: 7, startX: 92, skip: [] },
+    { y: 192, columns: 6, startX: 140, skip: [2] },
+    { y: 258, columns: 7, startX: 92, skip: [4] },
+    { y: 326, columns: 6, startX: 140, skip: [1, 4] },
+    { y: 396, columns: 5, startX: 188, skip: [2] }
+  ];
+
+  for (const row of pegRows) {
+    for (let column = 0; column < row.columns; column += 1) {
+      if (row.skip.includes(column)) continue;
+      const x = row.startX + column * pegSpacing;
+      if (x > SHOP_CONFIG.width - 42) continue;
+      bodies.push(Bodies.circle(x, row.y, 9, {
         isStatic: true,
         restitution: 0.88,
         friction: 0.015,
@@ -1359,12 +1367,6 @@ function createShopBoard() {
       }));
     }
   }
-
-  const leftGuide = Bodies.rectangle(108, 535, 165, 16, wallOptions);
-  const rightGuide = Bodies.rectangle(SHOP_CONFIG.width - 108, 535, 165, 16, wallOptions);
-  Body.setAngle(leftGuide, 0.28);
-  Body.setAngle(rightGuide, -0.28);
-  bodies.push(leftGuide, rightGuide);
 
   bodies.push(
     Bodies.rectangle(SHOP_CONFIG.width * 0.25, SHOP_CONFIG.sensorY, SHOP_CONFIG.width / 2 - 12, 55, {
